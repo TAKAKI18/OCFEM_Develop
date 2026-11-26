@@ -76,7 +76,7 @@
       COMMON/PARAM1/ Re,U0,D0,H0,w8,X1,X2,ANYU,ROU,TT,DT,TC
       COMMON/PARAM2/ NSB1,NSB2,NSB3,NAX,NAY,NAZ,NAT,NNAX,NNAY,NNAZ,IAN,IAX,IAY,IAZ,NX,MX,ID,INX,NST,IAT
       COMMON/COLLO1/ IE(1:KNAA,1:KMX),JD1(1:KNX),JD2(1:KNX),NSBU(1:KNB),NSBV(1:KNB),NSBW(1:KNB),JSBU(1:KNB),ISBU(1:KNB),NSBUI(1:KNB),JSBUI(1:KNB),ISBUI(1:KNB),&
-                     NSBUO(1:KNB),NSBPO(1:KNB),JSBUO(1:KNB),ISBUO(1:KNB),IIT(1:KNX*4)
+                     NSBUO(1:KNB),NSBPO(1:KNB),JSBUO(1:KNB),ISBUO(1:KNB),IIT(1:KNX*KNT*4)
                      
       REAL(8),ALLOCATABLE :: AX(:,:),AY(:,:),AZ(:,:),BX(:,:),BY(:,:),BZ(:,:),CXY(:,:),CYZ(:,:),CZX(:,:),AT(:,:)
       ALLOCATE (AX(1:KNAA,1:KNAA),AY(1:KNAA,1:KNAA),AZ(1:KNAA,1:KNAA),BX(1:KNAA,1:KNAA),BY(1:KNAA,1:KNAA),&
@@ -106,7 +106,7 @@
       COMMON/PARAM1/ Re,U0,D0,H0,w8,X1,X2,ANYU,ROU,TT,DT,TC
       COMMON/PARAM2/ NSB1,NSB2,NSB3,NAX,NAY,NAZ,NAT,NNAX,NNAY,NNAZ,IAN,IAX,IAY,IAZ,NX,MX,ID,INX,NST,IAT
       COMMON/COLLO1/ IE(1:KNAA,1:KMX),JD1(1:KNX),JD2(1:KNX),NSBU(1:KNB),NSBV(1:KNB),NSBW(1:KNB),JSBU(1:KNB),ISBU(1:KNB),NSBUI(1:KNB),JSBUI(1:KNB),ISBUI(1:KNB),&
-                     NSBUO(1:KNB),NSBPO(1:KNB),JSBUO(1:KNB),ISBUO(1:KNB),IIT(1:KNX*4)
+                     NSBUO(1:KNB),NSBPO(1:KNB),JSBUO(1:KNB),ISBUO(1:KNB),IIT(1:KNX*KNT*4)
 
       REAL(8)  AX(1:KNAA,1:KNAA),AY(1:KNAA,1:KNAA),AZ(1:KNAA,1:KNAA),BX(1:KNAA,1:KNAA),BY(1:KNAA,1:KNAA),&
                  BZ(1:KNAA,1:KNAA),CXY(1:KNAA,1:KNAA),CYZ(1:KNAA,1:KNAA),CZX(1:KNAA,1:KNAA),AT(1:KNT,1:KNT)
@@ -127,6 +127,9 @@
         IAY=NAY+2
         IAZ=NAZ+2
         IAN=(NAX+2)*(NAY+2)*(NAZ+2)
+        IF(NAX.LT.0.OR.NAY.LT.0.OR.NAZ.LT.0) ERROR STOP 'NEGATIVE_SPATIAL_COLLOCATION_COUNT'
+        IF(IAX.GT.KNA.OR.IAY.GT.KNA.OR.IAZ.GT.KNA) ERROR STOP 'ONE_DIMENSIONAL_COLLOCATION_COUNT_EXCEEDS_KNA'
+        IF(IAN.GT.KNAA) ERROR STOP 'LOCAL_NODE_COUNT_EXCEEDS_KNAA'
         READ(2,2010)(XXC(I),I=1,IAX)
         READ(2,2010)(YYC(I),I=1,IAY)
         READ(2,2010)(ZZC(I),I=1,IAZ) 
@@ -140,10 +143,23 @@
       OPEN(2,FILE=FNAME)
         READ(2,*) NAT
         IAT=NAT+2
+        IF(NAT.LT.0.OR.IAT.GT.KNT) ERROR STOP 'TIME_COLLOCATION_COUNT_EXCEEDS_KNT'
         READ(2,2015)(TTC(I),I=1,IAT)
         READ(2,2025)((AT(I,J),temp,J=1,IAT),I=1,IAT)
-        IAT=1
-        AT(1,1)=0.0D0
+!       Retain all NAT+2 temporal collocation points and the input
+!       time-differentiation operator for the unsteady formulation.
+        IF(DABS(TTC(1)).GT.1.0D-12.OR.DABS(TTC(IAT)-1.0D0).GT.1.0D-12) &
+          ERROR STOP 'TIME_COLLOCATION_ENDPOINTS_MUST_BE_ZERO_AND_ONE'
+        DO I=1,IAT
+          DROWSUM=0.0D0
+          DROWABS=0.0D0
+          DO J=1,IAT
+            DROWSUM=DROWSUM+AT(I,J)
+            DROWABS=DROWABS+DABS(AT(I,J))
+          END DO
+          IF(DABS(DROWSUM).GT.1.0D-12*DMAX1(1.0D0,DROWABS)) &
+            ERROR STOP 'TIME_DERIVATIVE_DOES_NOT_ANNIHILATE_CONSTANT_FIELD'
+        END DO
       CLOSE(2)
  2015 FORMAT(F25.0)
  2025 FORMAT(2F25.0)
@@ -153,6 +169,8 @@
       READ(*,*) FNAME
       OPEN(2,FILE=FNAME)
         READ(2,*) NA1,NA2
+        IF(NA1.LT.1.OR.NA1.GT.KNA.OR.NA2.LT.1.OR.NA2.GT.KNA) &
+          ERROR STOP 'FLOW_QUADRATURE_COUNT_EXCEEDS_KNA'
         DO I=1,NA1
           READ(2,2100) TEMP,W1(I),TEMP
         END DO
@@ -168,13 +186,21 @@
       READ(*,*) FNAME
       OPEN(2,FILE=FNAME)
         READ(2,1000) NX,MX
+        IF(NX.LT.1.OR.NX.GT.KNX) ERROR STOP 'GLOBAL_NODE_COUNT_EXCEEDS_KNX'
+        IF(MX.LT.1.OR.MX.GT.KMX) ERROR STOP 'ELEMENT_COUNT_EXCEEDS_KMX'
+        IF(IAN.LT.1.OR.IAN.GT.KNAA) ERROR STOP 'LOCAL_NODE_COUNT_EXCEEDS_KNAA'
         DO I=1,MX
           READ(2,1010)(IE(J,I),J=1,IAN)
 !             write(*,1010)(IE(J,I),J=1,IAN) 
         END DO
+        IF(ANY(IE(1:IAN,1:MX).LT.1).OR.ANY(IE(1:IAN,1:MX).GT.NX)) &
+          ERROR STOP 'ELEMENT_CONNECTIVITY_NODE_OUT_OF_RANGE'
           
 !          write(*,*) ie(14,1),ie(24,2)
-        READ(2,1020)(IJ1,XX(I),YY(I),ZZ(I),I=1,NX)
+        DO I=1,NX
+          READ(2,1020) IJ1,XX(I),YY(I),ZZ(I)
+          IF(IJ1.NE.I) ERROR STOP 'NODE_COORDINATE_INDEX_ORDER_MISMATCH'
+        END DO
       CLOSE(2)
  1000 FORMAT(2I10)
  1010 FORMAT(7I10)
@@ -186,7 +212,17 @@
       READ(*,*) FNAME
       OPEN(2,FILE=FNAME)
         READ(2,1030) ID
-        READ(2,1040)(JD1(K),JD2(K),XL(JD1(K),JD2(K)),XM(JD1(K),JD2(K)),XN(JD1(K),JD2(K)),K=1,ID)
+        IF(ID.LT.0.OR.ID.GT.KNX) ERROR STOP 'INTERFACE_CONNECTION_COUNT_EXCEEDS_KNX'
+        DO K=1,ID
+          READ(2,1040) IJ1,IJ2,DXL,DXM,DXN
+          IF(IJ1.LT.1.OR.IJ1.GT.IAN) ERROR STOP 'INTERFACE_LOCAL_NODE_OUT_OF_RANGE'
+          IF(IJ2.LT.1.OR.IJ2.GT.MX) ERROR STOP 'INTERFACE_ELEMENT_OUT_OF_RANGE'
+          JD1(K)=IJ1
+          JD2(K)=IJ2
+          XL(IJ1,IJ2)=DXL
+          XM(IJ1,IJ2)=DXM
+          XN(IJ1,IJ2)=DXN
+        END DO
       CLOSE(2)
  1030 FORMAT(I10)
  1040 FORMAT(2I10,3F25.0)
@@ -199,21 +235,27 @@
       OPEN(2,FILE=FNAME)
      ! boudary condition u,v,w at wall
         READ(2,*) NSB1
+        IF(NSB1.LT.0.OR.NSB1.GT.KNB) ERROR STOP 'WALL_BOUNDARY_COUNT_EXCEEDS_KNB'
         IF(NSB1.EQ.0) GO TO 10
           READ(2,3010)(NSBU(I),JSBU(I),ISBU(I),SBU(I),SBV(I),SBW(I),I=1,NSB1)
+          IF(ANY(NSBU(1:NSB1).LT.1).OR.ANY(NSBU(1:NSB1).GT.NX)) ERROR STOP 'WALL_GLOBAL_NODE_OUT_OF_RANGE'
           do i=1,nsb1
  !           write(*,*)'nsbu(i)=',nsbu(i)
           end do
 
      ! boundary condition u,v,w at inflow
    10   READ(2,*) NSB2
+        IF(NSB2.LT.0.OR.NSB2.GT.KNB) ERROR STOP 'INFLOW_BOUNDARY_COUNT_EXCEEDS_KNB'
         IF(NSB2.EQ.0) GO TO 20
           READ(2,3010)(NSBUI(I),JSBUI(I),ISBUI(I),SBUI(I),SBVI(I),SBWI(I),I=1,NSB2)
+          IF(ANY(NSBUI(1:NSB2).LT.1).OR.ANY(NSBUI(1:NSB2).GT.NX)) ERROR STOP 'INFLOW_GLOBAL_NODE_OUT_OF_RANGE'
 
      ! boundary condition p at outflow
    20   READ(2,*) NSB3
+        IF(NSB3.LT.0.OR.NSB3.GT.KNB) ERROR STOP 'OUTFLOW_BOUNDARY_COUNT_EXCEEDS_KNB'
         IF(NSB3.EQ.0) GO TO 25
           READ(2,3020)(NSBUO(I),JSBUO(I),ISBUO(I),SBPO(I),I=1,NSB3)
+          IF(ANY(NSBUO(1:NSB3).LT.1).OR.ANY(NSBUO(1:NSB3).GT.NX)) ERROR STOP 'OUTFLOW_GLOBAL_NODE_OUT_OF_RANGE'
 
    25 CONTINUE
 
@@ -231,14 +273,22 @@
 
       WRITE(*,*) 'ANYU,ROU= ?'
       READ(*,*) ANYU,ROU 
+      IF(ANYU.LE.0.0D0.OR.ROU.LE.0.0D0) ERROR STOP 'VISCOSITY_AND_DENSITY_MUST_BE_POSITIVE'
       
       WRITE(*,*)'Velocity U0,D0,H0,X1,X2 = ?'
       READ(*,*) U0,D0,H0,X1,X2
+      IF(D0.LE.0.0D0.OR.H0.LE.0.0D0.OR.X1.LE.0.0D0.OR.X2.LE.0.0D0) &
+        ERROR STOP 'GEOMETRY_LENGTHS_MUST_BE_POSITIVE'
       Re=U0*D0/ANYU
       
       WRITE(*,*)'Time Trial number TT,DT,TC,=?'
       READ(*,*) TT,DT,TC
-      NST=TT/DT
+      IF(DT.LE.0.0D0) ERROR STOP 'DT_MUST_BE_POSITIVE'
+      IF(TT.LT.0.0D0) ERROR STOP 'TT_MUST_BE_NONNEGATIVE'
+      NST=NINT(TT/DT)
+      IF(NST.LT.1) ERROR STOP 'AT_LEAST_ONE_TIME_ELEMENT_IS_REQUIRED'
+      IF(DABS(DBLE(NST)*DT-TT).GT.1.0D-10*DMAX1(1.0D0,DABS(TT))) &
+        ERROR STOP 'TT_MUST_BE_AN_INTEGER_MULTIPLE_OF_DT'
       
  
 
@@ -260,11 +310,12 @@
       COMMON/PARAM1/ Re,U0,D0,H0,w8,X1,X2,ANYU,ROU,TT,DT,TC
       COMMON/PARAM2/ NSB1,NSB2,NSB3,NAX,NAY,NAZ,NAT,NNAX,NNAY,NNAZ,IAN,IAX,IAY,IAZ,NX,MX,ID,INX,NST,IAT
       COMMON/COLLO1/ IE(1:KNAA,1:KMX),JD1(1:KNX),JD2(1:KNX),NSBU(1:KNB),NSBV(1:KNB),NSBW(1:KNB),JSBU(1:KNB),ISBU(1:KNB),NSBUI(1:KNB),JSBUI(1:KNB),ISBUI(1:KNB),&
-                     NSBUO(1:KNB),NSBPO(1:KNB),JSBUO(1:KNB),ISBUO(1:KNB),IIT(1:KNX*4)
+                     NSBUO(1:KNB),NSBPO(1:KNB),JSBUO(1:KNB),ISBUO(1:KNB),IIT(1:KNX*KNT*4)
                      
       REAL(8)  AX(1:KNAA,1:KNAA),AY(1:KNAA,1:KNAA),AZ(1:KNAA,1:KNAA),BX(1:KNAA,1:KNAA),BY(1:KNAA,1:KNAA),&
                  BZ(1:KNAA,1:KNAA),CXY(1:KNAA,1:KNAA),CYZ(1:KNAA,1:KNAA),CZX(1:KNAA,1:KNAA),AT(1:KNT,1:KNT),&
                  work(81)
+      INTEGER :: IPIV(9),INFO,LWORK
 
 
 
@@ -413,11 +464,17 @@
         END DO
         
         call dgetrf( 9, 9, DJJ, 9, ipiv, info )
-!        WRITE(*,*)'info=',info
+        IF(INFO.NE.0) THEN
+          WRITE(*,*) 'TRANSF_LU_FAILED ELEMENT/NODE/INFO=',JF,IIu,INFO
+          ERROR STOP 'TRANSF_LU_FAILED'
+        END IF
         
         lwork=81
         call dgetri( 9, DJJ, 9, ipiv, work, lwork, info )
-!        write(*,*)'info=',info
+        IF(INFO.NE.0) THEN
+          WRITE(*,*) 'TRANSF_INVERSE_FAILED ELEMENT/NODE/INFO=',JF,IIu,INFO
+          ERROR STOP 'TRANSF_INVERSE_FAILED'
+        END IF
 
 !        write(*,*)'jf=',jf
 !
@@ -446,6 +503,9 @@
       SUBROUTINE SOLUTE(AX,AY,AZ,BX,BY,BZ,CXY,CYZ,CZX,AT)
 
       use sparse_triplet_builder, only: triplet_matrix, triplet_init, triplet_add, triplet_clear, triplet_to_csr
+      use marquardt_pardiso_solver, only: solve_marquardt_pardiso, &
+           solve_marquardt_pardiso_augmented, solve_marquardt_pardiso_augmented_cached, &
+           release_marquardt_pardiso_cache
       implicit real*8(a-h,o-z)
       parameter(KNX=50000,KMX=5,KNA=40,KNT=10,KNAA=10000,KNB=20000)
       COMMON/COLMAT1/ XXC(1:KNA),YYC(1:KNA),ZZC(1:KNA),TTC(1:KNT),&
@@ -455,7 +515,7 @@
       COMMON/PARAM1/ Re,U0,D0,H0,w8,X1,X2,ANYU,ROU,TT,DT,TC
       COMMON/PARAM2/ NSB1,NSB2,NSB3,NAX,NAY,NAZ,NAT,NNAX,NNAY,NNAZ,IAN,IAX,IAY,IAZ,NX,MX,ID,INX,NST,IAT
       COMMON/COLLO1/ IE(1:KNAA,1:KMX),JD1(1:KNX),JD2(1:KNX),NSBU(1:KNB),NSBV(1:KNB),NSBW(1:KNB),JSBU(1:KNB),ISBU(1:KNB),NSBUI(1:KNB),JSBUI(1:KNB),ISBUI(1:KNB),&
-                     NSBUO(1:KNB),NSBPO(1:KNB),JSBUO(1:KNB),ISBUO(1:KNB),IIT(1:KNX*4)
+                     NSBUO(1:KNB),NSBPO(1:KNB),JSBUO(1:KNB),ISBUO(1:KNB),IIT(1:KNX*KNT*4)
       
       REAL(8) AX(1:KNAA,1:KNAA),AY(1:KNAA,1:KNAA),AZ(1:KNAA,1:KNAA),BX(1:KNAA,1:KNAA),BY(1:KNAA,1:KNAA),&
                  BZ(1:KNAA,1:KNAA),CXY(1:KNAA,1:KNAA),CYZ(1:KNAA,1:KNAA),CZX(1:KNAA,1:KNAA),AT(1:KNT,1:KNT)
@@ -469,19 +529,29 @@
 
 
 
-      character FNAME*100,FNAME_RESULT*100,FNAME_FLOW*100,trans*2
+      character FNAME*100,FNAME_RESULT*100,FNAME_FLOW*100,FNAME_CHECKPOINT*140,trans*2
+      CHARACTER(32) :: PARDISO_DIRECT_ENV
 
       INTEGER :: iparm(64)
       INTEGER(8) :: ipt(64)
       INTEGER GLOBAL_EQUATION_BLOCK,GLOBAL_DOF_INDEX,GLOBAL_EQUATION_INDEX
       INTEGER, PARAMETER :: BLOCK_U=1,BLOCK_V=2,BLOCK_W=3,BLOCK_P=4
+      INTEGER :: IASSEMBLE, IINTERFACE, NINTERFACE_ROWS, NTIME_LEFT_CONSTRAINT
       INTEGER,ALLOCATABLE :: IPIV(:),iperm(:),ir(:),ic(:),IS_CONSTRAINED(:),IS_CONSTRAINED_ROW(:),BC_ROW(:),IS_REPLACED_ROW(:),ISINGULAR_PIN(:)
       REAL(8),ALLOCATABLE :: FFS(:),FFS_PHYS(:),FFS_PHYS_BASE(:),FFS_LINEAR(:),FFS_REPLACED_ROW(:),YUVP1(:),x(:,:),a(:),FFUVP(:),FFUVP_LIN(:),FFUVP2(:),YUVWP(:),DDUVWP(:),DDUVWP_SD(:),FF1(:),BC_DELTA(:),ROW_SCALE(:),ROW_SCALE_BASE(:),COL_SCALE(:)
       REAL(8),ALLOCATABLE :: NORMAL_RHS(:),NORMAL_DIAG(:),SALS_RHS(:),SALS_DIAG(:)
-      INTEGER, PARAMETER :: KOZ_WORK_THREADS=8
+      INTEGER, PARAMETER :: KOZ_WORK_THREADS=12
+      INTEGER :: PIN_NODE(3)
+      INTEGER :: ICG_STATUS,IBEST_REEVAL
+      INTEGER :: NNZ_NORMAL_PARDISO
+      INTEGER :: IPARDISO_DIRECT_OVERRIDE,IPARDISO_AUGMENTED,IPARDISO_ENV_STATUS,IPARDISO_ENV_LENGTH
+      INTEGER :: IFAST_PRODUCTION,ICHORD_MAX_REUSE,ICHORD_REUSE_COUNT,ICHORD_REBUILD_COUNT
+      LOGICAL :: LCHORD_REBUILD
+      REAL(8) :: PIN_X(3),PIN_D(3),PIN_C(3)
       REAL(8),ALLOCATABLE :: CG_X(:),CG_R(:),CG_Z(:),CG_P(:),CG_AP(:),CG_TMP(:),CG_DIAG(:),CG_WORK(:,:),CG_WORK_T(:,:,:)
       REAL(8),ALLOCATABLE :: FFS_FD_BASE(:),JCOL_FD_BASE(:),JCOL_FD_DIFF(:)
       REAL(8),ALLOCATABLE :: U_SAVE(:,:),V_SAVE(:,:),W_SAVE(:,:),P_SAVE(:,:)
+      REAL(8),ALLOCATABLE :: U_TIME_LEFT(:),V_TIME_LEFT(:),W_TIME_LEFT(:),P_TIME_LEFT(:)
       REAL(8),ALLOCATABLE :: U_LSCAN_BEST(:,:),V_LSCAN_BEST(:,:),W_LSCAN_BEST(:,:),P_LSCAN_BEST(:,:),DDUVWP_LSCAN_BEST(:)
       REAL(8),ALLOCATABLE :: BBUVP(:,:),BBUVP_LIN(:,:)
       REAL(8),ALLOCATABLE :: SSMMK(:,:),DENSE_A(:,:),DENSE_B(:,:)
@@ -495,6 +565,7 @@
       ALLOCATE (IPIV(N),iperm(N),FFS(N),FFS_PHYS(N),FFS_PHYS_BASE(N),FFS_LINEAR(N),YUVP1(N),x(N,1))
       ALLOCATE (FFUVP(4*IAN*IAT),FFUVP_LIN(4*IAN*IAT),FFUVP2(4*IAN*IAT),YUVWP(N),DDUVWP(N),DDUVWP_SD(N),FF1(N))
       ALLOCATE (U_SAVE(IAT,NX),V_SAVE(IAT,NX),W_SAVE(IAT,NX),P_SAVE(IAT,NX))
+      ALLOCATE (U_TIME_LEFT(NX),V_TIME_LEFT(NX),W_TIME_LEFT(NX),P_TIME_LEFT(NX))
       ALLOCATE (U_LSCAN_BEST(IAT,NX),V_LSCAN_BEST(IAT,NX),W_LSCAN_BEST(IAT,NX),P_LSCAN_BEST(IAT,NX),DDUVWP_LSCAN_BEST(N))
       ALLOCATE (IS_CONSTRAINED(N),IS_CONSTRAINED_ROW(N),BC_ROW(N),IS_REPLACED_ROW(N),BC_DELTA(N),FFS_REPLACED_ROW(N))
       ALLOCATE (ROW_SCALE(N),ROW_SCALE_BASE(N),COL_SCALE(N))
@@ -503,7 +574,8 @@
       ALLOCATE (FFS_FD_BASE(N),JCOL_FD_BASE(N),JCOL_FD_DIFF(N))
       IF(N.LE.5000) ALLOCATE (ISINGULAR_PIN(N))
       IDENSE_DEBUG=0
-      IF(IDENSE_DEBUG.NE.0.AND.N.LE.5000) ALLOCATE (SSMMK(N,N),DENSE_A(N,N),DENSE_B(N,1))
+!     Dense SSMMK is not used in the refactored solver.  Keep the symbol
+!     only for unreachable legacy diagnostics, but never allocate it.
       PPE_CONV_SCALE=0.0D0
       PPE_JAC_SCALE=PPE_CONV_SCALE
       PPE_RHS_CONV_SCALE=PPE_CONV_SCALE
@@ -516,41 +588,59 @@
       ILINESEARCH_TRIES=0
       ILINESEARCH_ACCEPTED=0
       ILINESEARCH_EXTRA_MODE=0
-      ILAMBDA_SCAN_ACTIVE=0
-      ILAMBDA_SCAN_STAGE=0
-      ILAMBDA_SCAN_COUNT=0
-      ILAMBDA_SCAN_MAX=3
+      IBEST_REEVAL=0
       WW4_LAMBDA_BEST=1.0D300
-      DLM_LAMBDA_SCAN_BEST=0.0D0
-      DLM_LAMBDA_SCAN_CAND1=0.0D0
-      DLM_LAMBDA_SCAN_CAND2=0.0D0
-      DLM_LAMBDA_SCAN_CAND3=0.0D0
       DLM_LAMBDA_CURRENT=0.0D0
       DLM_LAMBDA_USED=0.0D0
-      DLM_LAMBDA_MIN=0.0D0
+      DLM_LAMBDA_MIN=TINY(1.0D0)
       DLM_LAMBDA_MAX=1.0D8
       DLAMBDA_RATIO=0.0D0
       ISTAG_LAMBDA_COUNT=0
       ISTAG_LAMBDA_HOLD=0
       ISTAG_ACCEPT_STEP=-1
       ITRUST_REJECT_COUNT=0
-!     Switch to the Gauss-Newton direction once Marquardt damping is small.
-!     DGN_LAMBDA_SWITCH controls the threshold; the default is 1.0D-2.
-      IGAUSS_NEWTON_TRIAL=1
+!     Small positive damping approaches Gauss-Newton without forcing lambda=0.
       IGN_ACTIVE=0
       IGN_DECREASE_COUNT=0
-      INEWTON_MAX=100
-      DGN_LAMBDA_SWITCH=1.0D-2
-      DGN_WW4_SWITCH=1.0D300
+      INEWTON_MAX=1000
+      PARDISO_DIRECT_ENV=''
+      CALL GET_ENVIRONMENT_VARIABLE('OCFEM_NEWTON_MAX',PARDISO_DIRECT_ENV, &
+           LENGTH=IPARDISO_ENV_LENGTH,STATUS=IPARDISO_ENV_STATUS)
+      IF(IPARDISO_ENV_STATUS.EQ.0.AND.IPARDISO_ENV_LENGTH.GT.0) THEN
+        READ(PARDISO_DIRECT_ENV(1:IPARDISO_ENV_LENGTH),*,IOSTAT=IPARDISO_ENV_STATUS) INEWTON_MAX
+      END IF
+      IF(INEWTON_MAX.LT.1) ERROR STOP 'OCFEM_NEWTON_MAX_MUST_BE_POSITIVE'
       DRELAX_START_SCALE=1.0D0
-      IMATRIX_LINEAR_RESIDUAL=1
+!     Keep the nonlinear residual used by Marquardt, SALS, and WW4 identical.
+!     Replacing parts of FFS by A*x changes the least-squares objective.
+      IMATRIX_LINEAR_RESIDUAL=0
       IMATRIX_AXB_FINAL_RESIDUAL=0
       IDIAG_LOCAL_MOM=0
       IDIAG_TRIAL_RESIDUAL=0
-      IPICARD_CONV_JAC=1
-      DCONV_FACTOR=0.001D0
+      IFAST_PRODUCTION=1
+      PARDISO_DIRECT_ENV=''
+      CALL GET_ENVIRONMENT_VARIABLE('OCFEM_PRODUCTION_FAST',PARDISO_DIRECT_ENV, &
+           LENGTH=IPARDISO_ENV_LENGTH,STATUS=IPARDISO_ENV_STATUS)
+      IF(IPARDISO_ENV_STATUS.EQ.0.AND.IPARDISO_ENV_LENGTH.GT.0) THEN
+        READ(PARDISO_DIRECT_ENV(1:IPARDISO_ENV_LENGTH),*,IOSTAT=IPARDISO_ENV_STATUS) IFAST_PRODUCTION
+      END IF
+      ICHORD_MAX_REUSE=3
+      PARDISO_DIRECT_ENV=''
+      CALL GET_ENVIRONMENT_VARIABLE('OCFEM_CHORD_MAX_REUSE',PARDISO_DIRECT_ENV, &
+           LENGTH=IPARDISO_ENV_LENGTH,STATUS=IPARDISO_ENV_STATUS)
+      IF(IPARDISO_ENV_STATUS.EQ.0.AND.IPARDISO_ENV_LENGTH.GT.0) THEN
+        READ(PARDISO_DIRECT_ENV(1:IPARDISO_ENV_LENGTH),*,IOSTAT=IPARDISO_ENV_STATUS) ICHORD_MAX_REUSE
+      END IF
+      ICHORD_MAX_REUSE=MAX(0,ICHORD_MAX_REUSE)
+      ICHORD_REUSE_COUNT=0
+      ICHORD_REBUILD_COUNT=0
+      DCHORD_FACTOR_LAMBDA=HUGE(1.0D0)
+      WRITE(*,*)'PRODUCTION_FAST/CHORD_MAX_REUSE=',IFAST_PRODUCTION,ICHORD_MAX_REUSE
+!     This derived source always assembles the full product-rule Jacobian.
+      DCONV_FACTOR=1.0D0
       WRITE(*,*)'CONVECTION CONTINUATION FACTOR=',DCONV_FACTOR
-      WRITE(*,*)'PICARD CONVECTION MATRIX MODE=',IPICARD_CONV_JAC
+      WRITE(*,*)'CONVECTION JACOBIAN MODE=FULL NEWTON PARTIAL DERIVATIVE'
+      WRITE(*,*)'LINEAR_SOLVER=MARQUARDT_AUGMENTED_CSR_PARDISO_CACHED'
       IPRESSURE_FD_CHECK=0
       IPRESSURE_FD_MODE=0
       IPRESSURE_FD_DONE=0
@@ -561,18 +651,18 @@
       IAPPLY_INLET_VELOCITY_BC=1
 !     Primary solver path for the refactored steadyized problem.
 !       0: disabled, 1: enabled
-!     Keep Newton/PARDISO available as a diagnostic path, but use
-!     Marquardt_CG as the standard nonlinear correction.
+!     Preserve the Marquardt algorithm; solve its full CSR normal equation
+!     by PARDISO instead of CG. The original CG source is kept separately.
       INEWTON_PARDISO=0
       IMARQUARDT_CG=1
       IMARQUARDT_PCG=1
       IMARQUARDT_SD_FALLBACK=1
-      IMARQUARDT_UNSCALED_CG=1
+      IMARQUARDT_UNSCALED_CG=0
       IDIRECT_BICGSTAB=0
       IF(IMARQUARDT_CG.NE.0) THEN
-        DLM_LAMBDA_MIN=0.0D0
+        DLM_LAMBDA_MIN=TINY(1.0D0)
         DLM_LAMBDA_MAX=1.0D4
-        DLM_LAMBDA_CURRENT=1.0D-4
+        DLM_LAMBDA_CURRENT=1.0D0
         IF(IMARQUARDT_UNSCALED_CG.NE.0) DLM_LAMBDA_CURRENT=1.0D0
         IF(Re.GE.1.0D5) THEN
           DLM_LAMBDA_MIN=1.0D-4
@@ -632,23 +722,105 @@
 
       write(*,*)'clear 007!'
 
-      WRITE(*,*)'INPUT FILE NAME OF STEADY STOKES INITIAL RESULT : ?'
-      READ(*,*) FNAME
-      OPEN(77,FILE=FNAME,STATUS='OLD')
-      DO IB=1,NX
-        READ(77,2100) XTMP,YTMP,ZTMP,UTMP,VTMP,WTMP,PTMP,RTMP
-        U(1,IB)=UTMP
-        V(1,IB)=VTMP
-        W(1,IB)=WTMP
-        P(1,IB)=PTMP
-      END DO
-      CLOSE(77)
+      IF(ITT1.EQ.1) THEN
+        WRITE(*,*)'INPUT FILE NAME OF STEADY STOKES INITIAL RESULT : ?'
+        READ(*,*) FNAME
+        OPEN(77,FILE=FNAME,STATUS='OLD')
+        DO IB=1,NX
+          READ(77,2100) TEMP,XTMP,YTMP,ZTMP,UTMP,VTMP,WTMP,PTMP,RTMP
+          IF(DMAX1(DABS(XTMP-XX(IB)),DABS(YTMP-YY(IB)),DABS(ZTMP-ZZ(IB))).GT.1.0D-10) &
+            ERROR STOP 'STOKES_INITIAL_COORDINATES_DO_NOT_MATCH'
+          U_TIME_LEFT(IB)=UTMP
+          V_TIME_LEFT(IB)=VTMP
+          W_TIME_LEFT(IB)=WTMP
+          P_TIME_LEFT(IB)=PTMP
+          DO ITT=1,IAT
+            U(ITT,IB)=UTMP
+            V(ITT,IB)=VTMP
+            W(ITT,IB)=WTMP
+            P(ITT,IB)=PTMP
+          END DO
+        END DO
+        CLOSE(77)
+      ELSE
+        WRITE(*,*)'TIME_STEP_CONTINUE_FROM_PREVIOUS_SOLUTION ITT1/T=',ITT1,T
+        DO IB=1,NX
+!         Shift the complete converged temporal profile so its old right
+!         endpoint becomes the new left endpoint.  This preserves the
+!         time variation instead of flattening or discontinuously clipping
+!         the profile at ITT=1.
+          DUSHIFT=U(IAT,IB)-U(1,IB)
+          DVSHIFT=V(IAT,IB)-V(1,IB)
+          DWSHIFT=W(IAT,IB)-W(1,IB)
+          DPSHIFT=P(IAT,IB)-P(1,IB)
+          UTMP=U(IAT,IB)
+          VTMP=V(IAT,IB)
+          WTMP=W(IAT,IB)
+          PTMP=P(IAT,IB)
+          U_TIME_LEFT(IB)=UTMP
+          V_TIME_LEFT(IB)=VTMP
+          W_TIME_LEFT(IB)=WTMP
+          P_TIME_LEFT(IB)=PTMP
+          DO ITT=1,IAT
+            U(ITT,IB)=U(ITT,IB)+DUSHIFT
+            V(ITT,IB)=V(ITT,IB)+DVSHIFT
+            W(ITT,IB)=W(ITT,IB)+DWSHIFT
+            P(ITT,IB)=P(ITT,IB)+DPSHIFT
+          END DO
+        END DO
+!       The projection below now changes ITT=1 only by roundoff.
+      END IF
       
       write(*,*)'clear 89 !'
       
+!     A new temporal element must not inherit a pending Newton trial or its
+!     line-search correction from the preceding element.
+      IPENDING_STEP=0
+      ILINESEARCH_TRIES=0
+      ILINESEARCH_ACCEPTED=0
+      ILINESEARCH_EXTRA_MODE=0
+      IBEST_REEVAL=0
+      IOPPOSITE_TRIED=0
+      ITRUST_REJECT_COUNT=0
+      WW4_LINE_BEST=1.0D300
+      DRELAX_START_SCALE=1.0D0
       IPK=0
+      ICHORD_REUSE_COUNT=0
 
 30    CONTINUE      
+!     The left endpoint of each temporal element is inherited from the
+!     previous element.  Pressure is also inherited: after eliminating the
+!     fixed velocity columns, the left-end continuity equation otherwise has
+!     an empty Jacobian row and the corresponding pressure is undetermined.
+      DO I=1,NX
+        U(1,I)=U_TIME_LEFT(I)
+        V(1,I)=V_TIME_LEFT(I)
+        W(1,I)=W_TIME_LEFT(I)
+        P(1,I)=P_TIME_LEFT(I)
+      END DO
+!     Project prescribed values before every residual/Jacobian evaluation.
+      DO J=1,NSB1
+        II=NSBU(J)
+        DO ITT=1,IAT
+          U(ITT,II)=SBU(J)
+          V(ITT,II)=SBV(J)
+          W(ITT,II)=SBW(J)
+        END DO
+      END DO
+      DO J=1,NSB2
+        II=NSBUI(J)
+        DO ITT=1,IAT
+          U(ITT,II)=SBUI(J)
+          V(ITT,II)=SBVI(J)
+          W(ITT,II)=SBWI(J)
+        END DO
+      END DO
+      DO I3=1,NSB3
+        II=NSBUO(I3)
+        DO ITT=1,IAT
+          P(ITT,II)=SBPO(I3)
+        END DO
+      END DO
      
       DO I=1,NX*IAT*4
         IIT(I)=0
@@ -758,8 +930,8 @@
 
             JJB=JTT+(J1-1)*IAT
           
-            IF((I1.GT.8+4*(NAX+NAY+NAZ)+2*NAX*NAY+2*NAX*NAZ+NAY*NAZ.AND.I1.LT.9+4*(NAX+NAY+NAZ)+2*NAX*NAY+2*NAX*NAZ+2*NAY*NAZ).OR.(I1.GT.8+4*(NAX+NAY+NAZ)+2*NAX*NAY+NAX*NAZ.AND.&
-                I1.LT.9+4*(NAX+NAY+NAZ)+2*NAX*NAY+NAX*NAZ+NAY*NAZ)) THEN
+            IF(ITT.EQ.JTT.AND.((I1.GT.8+4*(NAX+NAY+NAZ)+2*NAX*NAY+2*NAX*NAZ+NAY*NAZ.AND.I1.LT.9+4*(NAX+NAY+NAZ)+2*NAX*NAY+2*NAX*NAZ+2*NAY*NAZ).OR.&
+                (I1.GT.8+4*(NAX+NAY+NAZ)+2*NAX*NAY+NAX*NAZ.AND.I1.LT.9+4*(NAX+NAY+NAZ)+2*NAX*NAY+NAX*NAZ+NAY*NAZ))) THEN
               BBUVP(IIB,JJB)=(DJJ(1,1)*AX(I1,J1)+DJJ(1,2)*AY(I1,J1)+DJJ(1,3)*AZ(I1,J1)+DJJ(1,4)*BX(I1,J1)+DJJ(1,5)*BY(I1,J1)+DJJ(1,6)*BZ(I1,J1)+&
                   DJJ(1,7)*CXY(I1,J1)+DJJ(1,8)*CYZ(I1,J1)+DJJ(1,9)*CZX(I1,J1))*XL(I1,IM)+(DJJ(2,1)*AX(I1,J1)+DJJ(2,2)*AY(I1,J1)+DJJ(2,3)*AZ(I1,J1)+&
                   DJJ(2,4)*BX(I1,J1)+DJJ(2,5)*BY(I1,J1)+DJJ(2,6)*BZ(I1,J1)+DJJ(2,7)*CXY(I1,J1)+DJJ(2,8)*CYZ(I1,J1)+DJJ(2,9)*CZX(I1,J1))*XM(I1,IM)&
@@ -783,199 +955,42 @@
             END IF
             IF((I1.GT.8+4*(NAX+NAY+NAZ)+2*(NAX*NAY+NAX*NAZ+NAY*NAZ).AND.I1.LE.8+4*(NAX+NAY+NAZ)+2*(NAX*NAY+NAX*NAZ+NAY*NAZ)+NAX*NAY*NAZ)) THEN
                 IF(ITT.EQ.JTT) THEN
-                IF(.FALSE.) THEN
-                DO IJ=1,IAN
-                TAXUVP1(IJ)=DJJ(1,1)*AX(I1,IJ)+DJJ(1,2)*AY(I1,IJ)+DJJ(1,3)*AZ(I1,IJ)+DJJ(1,4)*BX(I1,IJ)+DJJ(1,5)*BY(I1,IJ)+DJJ(1,6)*BZ(I1,IJ)+DJJ(1,7)*CXY(I1,IJ)+DJJ(1,8)*CYZ(I1,IJ)+DJJ(1,9)*CZX(I1,IJ)
-                TAYUVP1(IJ)=DJJ(2,1)*AX(I1,IJ)+DJJ(2,2)*AY(I1,IJ)+DJJ(2,3)*AZ(I1,IJ)+DJJ(2,4)*BX(I1,IJ)+DJJ(2,5)*BY(I1,IJ)+DJJ(2,6)*BZ(I1,IJ)+DJJ(2,7)*CXY(I1,IJ)+DJJ(2,8)*CYZ(I1,IJ)+DJJ(2,9)*CZX(I1,IJ)
-                TAZUVP1(IJ)=DJJ(3,1)*AX(I1,IJ)+DJJ(3,2)*AY(I1,IJ)+DJJ(3,3)*AZ(I1,IJ)+DJJ(3,4)*BX(I1,IJ)+DJJ(3,5)*BY(I1,IJ)+DJJ(3,6)*BZ(I1,IJ)+DJJ(3,7)*CXY(I1,IJ)+DJJ(3,8)*CYZ(I1,IJ)+DJJ(3,9)*CZX(I1,IJ)
-                TBXUVP1(IJ)=DJJ(4,1)*AX(I1,IJ)+DJJ(4,2)*AY(I1,IJ)+DJJ(4,3)*AZ(I1,IJ)+DJJ(4,4)*BX(I1,IJ)+DJJ(4,5)*BY(I1,IJ)+DJJ(4,6)*BZ(I1,IJ)+DJJ(4,7)*CXY(I1,IJ)+DJJ(4,8)*CYZ(I1,IJ)+DJJ(4,9)*CZX(I1,IJ)
-                TBYUVP1(IJ)=DJJ(5,1)*AX(I1,IJ)+DJJ(5,2)*AY(I1,IJ)+DJJ(5,3)*AZ(I1,IJ)+DJJ(5,4)*BX(I1,IJ)+DJJ(5,5)*BY(I1,IJ)+DJJ(5,6)*BZ(I1,IJ)+DJJ(5,7)*CXY(I1,IJ)+DJJ(5,8)*CYZ(I1,IJ)+DJJ(5,9)*CZX(I1,IJ)
-                TBZUVP1(IJ)=DJJ(6,1)*AX(I1,IJ)+DJJ(6,2)*AY(I1,IJ)+DJJ(6,3)*AZ(I1,IJ)+DJJ(6,4)*BX(I1,IJ)+DJJ(6,5)*BY(I1,IJ)+DJJ(6,6)*BZ(I1,IJ)+DJJ(6,7)*CXY(I1,IJ)+DJJ(6,8)*CYZ(I1,IJ)+DJJ(6,9)*CZX(I1,IJ)
-                TCXYUVP1(IJ)=DJJ(7,1)*AX(I1,IJ)+DJJ(7,2)*AY(I1,IJ)+DJJ(7,3)*AZ(I1,IJ)+DJJ(7,4)*BX(I1,IJ)+DJJ(7,5)*BY(I1,IJ)+DJJ(7,6)*BZ(I1,IJ)+DJJ(7,7)*CXY(I1,IJ)+DJJ(7,8)*CYZ(I1,IJ)+DJJ(7,9)*CZX(I1,IJ)
-                TCYZUVP1(IJ)=DJJ(8,1)*AX(I1,IJ)+DJJ(8,2)*AY(I1,IJ)+DJJ(8,3)*AZ(I1,IJ)+DJJ(8,4)*BX(I1,IJ)+DJJ(8,5)*BY(I1,IJ)+DJJ(8,6)*BZ(I1,IJ)+DJJ(8,7)*CXY(I1,IJ)+DJJ(8,8)*CYZ(I1,IJ)+DJJ(8,9)*CZX(I1,IJ)
-                TCZXUVP1(IJ)=DJJ(9,1)*AX(I1,IJ)+DJJ(9,2)*AY(I1,IJ)+DJJ(9,3)*AZ(I1,IJ)+DJJ(9,4)*BX(I1,IJ)+DJJ(9,5)*BY(I1,IJ)+DJJ(9,6)*BZ(I1,IJ)+DJJ(9,7)*CXY(I1,IJ)+DJJ(9,8)*CYZ(I1,IJ)+DJJ(9,9)*CZX(I1,IJ)
-                UU1(IJ)=U(ITT,IE(IJ,IM))
-                VV1(IJ)=V(ITT,IE(IJ,IM))
-                WW1(IJ)=W(ITT,IE(IJ,IM))
-                END DO
-                TAXU=OZ_DDOT(IAN, TAXUVP1, 1, UU1, 1)
-                TAYU=OZ_DDOT(IAN, TAYUVP1, 1, UU1, 1)
-                TAZU=OZ_DDOT(IAN, TAZUVP1, 1, UU1, 1)
-                TAXV=OZ_DDOT(IAN, TAXUVP1, 1, VV1, 1)
-                TAYV=OZ_DDOT(IAN, TAYUVP1, 1, VV1, 1)
-                TAZV=OZ_DDOT(IAN, TAZUVP1, 1, VV1, 1)
-                TAXW=OZ_DDOT(IAN, TAXUVP1, 1, WW1, 1)
-                TAYW=OZ_DDOT(IAN, TAYUVP1, 1, WW1, 1)
-                TAZW=OZ_DDOT(IAN, TAZUVP1, 1, WW1, 1)
-                END IF
-                IF(I1.EQ.J1) THEN
-                BBUVP(IIB,JJB)=TAXUVP1(J1)
-                BBUVP(IIB,JJB+IAN*IAT)=TAYUVP1(J1)
-                BBUVP(IIB,JJB+2*IAN*IAT)=TAZUVP1(J1)
-                BBUVP(IIB,JJB+3*IAN*IAT)=0.0D0
-                
-                IF(.FALSE.) THEN
-                DO IJ=1,IAN
-                TAXUVP1(IJ)=DJJ(1,1)*AX(I1,IJ)+DJJ(1,2)*AY(I1,IJ)+DJJ(1,3)*AZ(I1,IJ)+DJJ(1,4)*BX(I1,IJ)+DJJ(1,5)*BY(I1,IJ)+DJJ(1,6)*BZ(I1,IJ)+DJJ(1,7)*CXY(I1,IJ)+DJJ(1,8)*CYZ(I1,IJ)+DJJ(1,9)*CZX(I1,IJ)
-                TAYUVP1(IJ)=DJJ(2,1)*AX(I1,IJ)+DJJ(2,2)*AY(I1,IJ)+DJJ(2,3)*AZ(I1,IJ)+DJJ(2,4)*BX(I1,IJ)+DJJ(2,5)*BY(I1,IJ)+DJJ(2,6)*BZ(I1,IJ)+DJJ(2,7)*CXY(I1,IJ)+DJJ(2,8)*CYZ(I1,IJ)+DJJ(2,9)*CZX(I1,IJ)
-                TAZUVP1(IJ)=DJJ(3,1)*AX(I1,IJ)+DJJ(3,2)*AY(I1,IJ)+DJJ(3,3)*AZ(I1,IJ)+DJJ(3,4)*BX(I1,IJ)+DJJ(3,5)*BY(I1,IJ)+DJJ(3,6)*BZ(I1,IJ)+DJJ(3,7)*CXY(I1,IJ)+DJJ(3,8)*CYZ(I1,IJ)+DJJ(3,9)*CZX(I1,IJ)
-                TBXUVP1(IJ)=DJJ(4,1)*AX(I1,IJ)+DJJ(4,2)*AY(I1,IJ)+DJJ(4,3)*AZ(I1,IJ)+DJJ(4,4)*BX(I1,IJ)+DJJ(4,5)*BY(I1,IJ)+DJJ(4,6)*BZ(I1,IJ)+DJJ(4,7)*CXY(I1,IJ)+DJJ(4,8)*CYZ(I1,IJ)+DJJ(4,9)*CZX(I1,IJ)
-                TBYUVP1(IJ)=DJJ(5,1)*AX(I1,IJ)+DJJ(5,2)*AY(I1,IJ)+DJJ(5,3)*AZ(I1,IJ)+DJJ(5,4)*BX(I1,IJ)+DJJ(5,5)*BY(I1,IJ)+DJJ(5,6)*BZ(I1,IJ)+DJJ(5,7)*CXY(I1,IJ)+DJJ(5,8)*CYZ(I1,IJ)+DJJ(5,9)*CZX(I1,IJ)
-                TBZUVP1(IJ)=DJJ(6,1)*AX(I1,IJ)+DJJ(6,2)*AY(I1,IJ)+DJJ(6,3)*AZ(I1,IJ)+DJJ(6,4)*BX(I1,IJ)+DJJ(6,5)*BY(I1,IJ)+DJJ(6,6)*BZ(I1,IJ)+DJJ(6,7)*CXY(I1,IJ)+DJJ(6,8)*CYZ(I1,IJ)+DJJ(6,9)*CZX(I1,IJ)
-                TCXYUVP1(IJ)=DJJ(7,1)*AX(I1,IJ)+DJJ(7,2)*AY(I1,IJ)+DJJ(7,3)*AZ(I1,IJ)+DJJ(7,4)*BX(I1,IJ)+DJJ(7,5)*BY(I1,IJ)+DJJ(7,6)*BZ(I1,IJ)+DJJ(7,7)*CXY(I1,IJ)+DJJ(7,8)*CYZ(I1,IJ)+DJJ(7,9)*CZX(I1,IJ)
-                TCYZUVP1(IJ)=DJJ(8,1)*AX(I1,IJ)+DJJ(8,2)*AY(I1,IJ)+DJJ(8,3)*AZ(I1,IJ)+DJJ(8,4)*BX(I1,IJ)+DJJ(8,5)*BY(I1,IJ)+DJJ(8,6)*BZ(I1,IJ)+DJJ(8,7)*CXY(I1,IJ)+DJJ(8,8)*CYZ(I1,IJ)+DJJ(8,9)*CZX(I1,IJ)
-                TCZXUVP1(IJ)=DJJ(9,1)*AX(I1,IJ)+DJJ(9,2)*AY(I1,IJ)+DJJ(9,3)*AZ(I1,IJ)+DJJ(9,4)*BX(I1,IJ)+DJJ(9,5)*BY(I1,IJ)+DJJ(9,6)*BZ(I1,IJ)+DJJ(9,7)*CXY(I1,IJ)+DJJ(9,8)*CYZ(I1,IJ)+DJJ(9,9)*CZX(I1,IJ)
-                UU1(IJ)=U(ITT,IE(IJ,IM))
-                VV1(IJ)=V(ITT,IE(IJ,IM))
-                WW1(IJ)=W(ITT,IE(IJ,IM))
-                END DO
-                TAXU=OZ_DDOT(IAN, TAXUVP1, 1, UU1, 1)
-                TAYU=OZ_DDOT(IAN, TAYUVP1, 1, UU1, 1)
-                TAZU=OZ_DDOT(IAN, TAZUVP1, 1, UU1, 1)
-                TAXV=OZ_DDOT(IAN, TAXUVP1, 1, VV1, 1)
-                TAYV=OZ_DDOT(IAN, TAYUVP1, 1, VV1, 1)
-                TAZV=OZ_DDOT(IAN, TAZUVP1, 1, VV1, 1)
-                TAXW=OZ_DDOT(IAN, TAXUVP1, 1, WW1, 1)
-                TAYW=OZ_DDOT(IAN, TAYUVP1, 1, WW1, 1)
-                TAZW=OZ_DDOT(IAN, TAZUVP1, 1, WW1, 1)
-                TBXU=OZ_DDOT(IAN, TBXUVP1, 1, UU1, 1)
-                TBYV=OZ_DDOT(IAN, TBYUVP1, 1, VV1, 1)
-                TBZW=OZ_DDOT(IAN, TBZUVP1, 1, WW1, 1)
-                TCXYU=OZ_DDOT(IAN, TCXYUVP1, 1, UU1, 1)
-                TCZXU=OZ_DDOT(IAN, TCZXUVP1, 1, UU1, 1)
-                TCYZV=OZ_DDOT(IAN, TCYZUVP1, 1, VV1, 1)
-                TCXYV=OZ_DDOT(IAN, TCXYUVP1, 1, VV1, 1)
-                TCYZW=OZ_DDOT(IAN, TCYZUVP1, 1, WW1, 1)
-                TCZXW=OZ_DDOT(IAN, TCZXUVP1, 1, WW1, 1)
-                END IF
-                
-                BBUVP(IIB,JJB)=TAXUVP1(J1)
-                BBUVP(IIB,JJB+IAN*IAT)=TAYUVP1(J1)
-                BBUVP(IIB,JJB+2*IAN*IAT)=TAZUVP1(J1)
-                BBUVP(IIB+IAN*IAT,JJB)=0.0D0*AT(ITT,JTT)/DT+U(ITT,II)*(DJJ(1,1)*AX(I1,J1)+DJJ(1,2)*AY(I1,J1)+DJJ(1,3)*AZ(I1,J1)+DJJ(1,4)*BX(I1,J1)+DJJ(1,5)*BY(I1,J1)+DJJ(1,6)*BZ(I1,J1)+&
-                     DJJ(1,7)*CXY(I1,J1)+DJJ(1,8)*CYZ(I1,J1)+DJJ(1,9)*CZX(I1,J1))+TAXU+V(ITT,II)*(DJJ(2,1)*AX(I1,J1)+DJJ(2,2)*AY(I1,J1)+DJJ(2,3)*AZ(I1,J1)+DJJ(2,4)*BX(I1,J1)+&
-                     DJJ(2,5)*BY(I1,J1)+DJJ(2,6)*BZ(I1,J1)+DJJ(2,7)*CXY(I1,J1)+DJJ(2,8)*CYZ(I1,J1)+DJJ(2,9)*CZX(I1,J1))+W(ITT,II)*(DJJ(3,1)*AX(I1,J1)+DJJ(3,2)*AY(I1,J1)+&
-                     DJJ(3,3)*AZ(I1,J1)+DJJ(3,4)*BX(I1,J1)+DJJ(3,5)*BY(I1,J1)+DJJ(3,6)*BZ(I1,J1)+ DJJ(3,7)*CXY(I1,J1)+DJJ(3,8)*CYZ(I1,J1)+DJJ(3,9)*CZX(I1,J1))&
-                     -ANYU*(DJJ(4,1)*AX(I1,J1)+DJJ(4,2)*AY(I1,J1)+DJJ(4,3)*AZ(I1,J1)+DJJ(4,4)*BX(I1,J1)+DJJ(4,5)*BY(I1,J1)+&
-                     DJJ(4,6)*BZ(I1,J1)+DJJ(4,7)*CXY(I1,J1)+DJJ(4,8)*CYZ(I1,J1)+DJJ(4,9)*CZX(I1,J1)+DJJ(5,1)*AX(I1,J1)+DJJ(5,2)*AY(I1,J1)+DJJ(5,3)*AZ(I1,J1)+&
-                     DJJ(5,4)*BX(I1,J1)+DJJ(5,5)*BY(I1,J1)+DJJ(5,6)*BZ(I1,J1)+DJJ(5,7)*CXY(I1,J1)+DJJ(5,8)*CYZ(I1,J1)+DJJ(5,9)*CZX(I1,J1)+DJJ(6,1)*AX(I1,J1)+&
-                     DJJ(6,2)*AY(I1,J1)+DJJ(6,3)*AZ(I1,J1)+DJJ(6,4)*BX(I1,J1)+DJJ(6,5)*BY(I1,J1)+DJJ(6,6)*BZ(I1,J1)+DJJ(6,7)*CXY(I1,J1)+DJJ(6,8)*CYZ(I1,J1)+&
-                     DJJ(6,9)*CZX(I1,J1))
-                BBUVP(IIB+IAN*IAT,JJB+IAN*IAT)=TAYU
-                BBUVP(IIB+IAN*IAT,JJB+2*IAN*IAT)=TAZU
-                BBUVP(IIB+IAN*IAT,JJB+3*IAN*IAT)=1.0D0/ROU*(DJJ(1,1)*AX(I1,J1)+DJJ(1,2)*AY(I1,J1)+DJJ(1,3)*AZ(I1,J1)+DJJ(1,4)*BX(I1,J1)+DJJ(1,5)*BY(I1,J1)+DJJ(1,6)*BZ(I1,J1)+&
-                     DJJ(1,7)*CXY(I1,J1)+DJJ(1,8)*CYZ(I1,J1)+DJJ(1,9)*CZX(I1,J1))
-                BBUVP(IIB+2*IAN*IAT,JJB)=TAXV
-                BBUVP(IIB+2*IAN*IAT,JJB+IAN*IAT)=0.0D0*AT(ITT,JTT)/DT+U(ITT,II)*(DJJ(1,1)*AX(I1,J1)+DJJ(1,2)*AY(I1,J1)+DJJ(1,3)*AZ(I1,J1)+DJJ(1,4)*BX(I1,J1)+DJJ(1,5)*BY(I1,J1)+DJJ(1,6)*BZ(I1,J1)+&
-                     DJJ(1,7)*CXY(I1,J1)+DJJ(1,8)*CYZ(I1,J1)+DJJ(1,9)*CZX(I1,J1))+V(ITT,II)*(DJJ(2,1)*AX(I1,J1)+DJJ(2,2)*AY(I1,J1)+DJJ(2,3)*AZ(I1,J1)+DJJ(2,4)*BX(I1,J1)+&
-                     DJJ(2,5)*BY(I1,J1)+DJJ(2,6)*BZ(I1,J1)+DJJ(2,7)*CXY(I1,J1)+DJJ(2,8)*CYZ(I1,J1)+DJJ(2,9)*CZX(I1,J1))+TAYV+W(ITT,II)*(DJJ(3,1)*AX(I1,J1)+DJJ(3,2)*AY(I1,J1)+&
-                     DJJ(3,3)*AZ(I1,J1)+DJJ(3,4)*BX(I1,J1)+DJJ(3,5)*BY(I1,J1)+DJJ(3,6)*BZ(I1,J1)+ DJJ(3,7)*CXY(I1,J1)+DJJ(3,8)*CYZ(I1,J1)+DJJ(3,9)*CZX(I1,J1))&
-                     -ANYU*(DJJ(4,1)*AX(I1,J1)+DJJ(4,2)*AY(I1,J1)+DJJ(4,3)*AZ(I1,J1)+DJJ(4,4)*BX(I1,J1)+DJJ(4,5)*BY(I1,J1)+&
-                     DJJ(4,6)*BZ(I1,J1)+DJJ(4,7)*CXY(I1,J1)+DJJ(4,8)*CYZ(I1,J1)+DJJ(4,9)*CZX(I1,J1)+DJJ(5,1)*AX(I1,J1)+DJJ(5,2)*AY(I1,J1)+DJJ(5,3)*AZ(I1,J1)+&
-                     DJJ(5,4)*BX(I1,J1)+DJJ(5,5)*BY(I1,J1)+DJJ(5,6)*BZ(I1,J1)+DJJ(5,7)*CXY(I1,J1)+DJJ(5,8)*CYZ(I1,J1)+DJJ(5,9)*CZX(I1,J1)+DJJ(6,1)*AX(I1,J1)+&
-                     DJJ(6,2)*AY(I1,J1)+DJJ(6,3)*AZ(I1,J1)+DJJ(6,4)*BX(I1,J1)+DJJ(6,5)*BY(I1,J1)+DJJ(6,6)*BZ(I1,J1)+DJJ(6,7)*CXY(I1,J1)+DJJ(6,8)*CYZ(I1,J1)+&
-                     DJJ(6,9)*CZX(I1,J1))
-                BBUVP(IIB+2*IAN*IAT,JJB+2*IAN*IAT)=TAZV
-                BBUVP(IIB+2*IAN*IAT,JJB+3*IAN*IAT)=1.0D0/ROU*(DJJ(2,1)*AX(I1,J1)+DJJ(2,2)*AY(I1,J1)+DJJ(2,3)*AZ(I1,J1)+DJJ(2,4)*BX(I1,J1)+DJJ(2,5)*BY(I1,J1)+DJJ(2,6)*BZ(I1,J1)+&
-                     DJJ(2,7)*CXY(I1,J1)+DJJ(2,8)*CYZ(I1,J1)+DJJ(2,9)*CZX(I1,J1))
-                BBUVP(IIB+3*IAN*IAT,JJB)=TAXW
-                BBUVP(IIB+3*IAN*IAT,JJB+IAN*IAT)=TAYW
-                BBUVP(IIB+3*IAN*IAT,JJB+2*IAN*IAT)=0.0D0*AT(ITT,JTT)/DT+U(ITT,II)*(DJJ(1,1)*AX(I1,J1)+DJJ(1,2)*AY(I1,J1)+DJJ(1,3)*AZ(I1,J1)+DJJ(1,4)*BX(I1,J1)+DJJ(1,5)*BY(I1,J1)+DJJ(1,6)*BZ(I1,J1)+&
-                     DJJ(1,7)*CXY(I1,J1)+DJJ(1,8)*CYZ(I1,J1)+DJJ(1,9)*CZX(I1,J1))+V(ITT,II)*(DJJ(2,1)*AX(I1,J1)+DJJ(2,2)*AY(I1,J1)+DJJ(2,3)*AZ(I1,J1)+DJJ(2,4)*BX(I1,J1)+&
-                     DJJ(2,5)*BY(I1,J1)+DJJ(2,6)*BZ(I1,J1)+DJJ(2,7)*CXY(I1,J1)+DJJ(2,8)*CYZ(I1,J1)+DJJ(2,9)*CZX(I1,J1))+W(ITT,II)*(DJJ(3,1)*AX(I1,J1)+DJJ(3,2)*AY(I1,J1)+&
-                     DJJ(3,3)*AZ(I1,J1)+DJJ(3,4)*BX(I1,J1)+DJJ(3,5)*BY(I1,J1)+DJJ(3,6)*BZ(I1,J1)+ DJJ(3,7)*CXY(I1,J1)+DJJ(3,8)*CYZ(I1,J1)+DJJ(3,9)*CZX(I1,J1))+TAZW-&
-                     ANYU*(DJJ(4,1)*AX(I1,J1)+DJJ(4,2)*AY(I1,J1)+DJJ(4,3)*AZ(I1,J1)+DJJ(4,4)*BX(I1,J1)+DJJ(4,5)*BY(I1,J1)+&
-                     DJJ(4,6)*BZ(I1,J1)+DJJ(4,7)*CXY(I1,J1)+DJJ(4,8)*CYZ(I1,J1)+DJJ(4,9)*CZX(I1,J1)+DJJ(5,1)*AX(I1,J1)+DJJ(5,2)*AY(I1,J1)+DJJ(5,3)*AZ(I1,J1)+&
-                     DJJ(5,4)*BX(I1,J1)+DJJ(5,5)*BY(I1,J1)+DJJ(5,6)*BZ(I1,J1)+DJJ(5,7)*CXY(I1,J1)+DJJ(5,8)*CYZ(I1,J1)+DJJ(5,9)*CZX(I1,J1)+DJJ(6,1)*AX(I1,J1)+&
-                     DJJ(6,2)*AY(I1,J1)+DJJ(6,3)*AZ(I1,J1)+DJJ(6,4)*BX(I1,J1)+DJJ(6,5)*BY(I1,J1)+DJJ(6,6)*BZ(I1,J1)+DJJ(6,7)*CXY(I1,J1)+DJJ(6,8)*CYZ(I1,J1)+&
-                     DJJ(6,9)*CZX(I1,J1))
-                BBUVP(IIB+3*IAN*IAT,JJB+3*IAN*IAT)=1.0D0/ROU*(DJJ(3,1)*AX(I1,J1)+DJJ(3,2)*AY(I1,J1)+DJJ(3,3)*AZ(I1,J1)+DJJ(3,4)*BX(I1,J1)+DJJ(3,5)*BY(I1,J1)+DJJ(3,6)*BZ(I1,J1)+&
-                     DJJ(3,7)*CXY(I1,J1)+DJJ(3,8)*CYZ(I1,J1)+DJJ(3,9)*CZX(I1,J1))
-                END IF
-                IF(I1.NE.J1) THEN
-                BBUVP(IIB,JJB)=TAXUVP1(J1)
-                BBUVP(IIB,JJB+IAN*IAT)=TAYUVP1(J1)
-                BBUVP(IIB,JJB+2*IAN*IAT)=TAZUVP1(J1)
-                BBUVP(IIB,JJB+3*IAN*IAT)=0.0D0
-                BBUVP(IIB+IAN*IAT,JJB)=U(ITT,II)*(DJJ(1,1)*AX(I1,J1)+DJJ(1,2)*AY(I1,J1)+DJJ(1,3)*AZ(I1,J1)+DJJ(1,4)*BX(I1,J1)+DJJ(1,5)*BY(I1,J1)+DJJ(1,6)*BZ(I1,J1)+&
-                     DJJ(1,7)*CXY(I1,J1)+DJJ(1,8)*CYZ(I1,J1)+DJJ(1,9)*CZX(I1,J1))+V(ITT,II)*(DJJ(2,1)*AX(I1,J1)+DJJ(2,2)*AY(I1,J1)+DJJ(2,3)*AZ(I1,J1)+DJJ(2,4)*BX(I1,J1)+&
-                     DJJ(2,5)*BY(I1,J1)+DJJ(2,6)*BZ(I1,J1)+DJJ(2,7)*CXY(I1,J1)+DJJ(2,8)*CYZ(I1,J1)+DJJ(2,9)*CZX(I1,J1))+W(ITT,II)*(DJJ(3,1)*AX(I1,J1)+DJJ(3,2)*AY(I1,J1)+&
-                     DJJ(3,3)*AZ(I1,J1)+DJJ(3,4)*BX(I1,J1)+DJJ(3,5)*BY(I1,J1)+DJJ(3,6)*BZ(I1,J1)+ DJJ(3,7)*CXY(I1,J1)+DJJ(3,8)*CYZ(I1,J1)+DJJ(3,9)*CZX(I1,J1))&
-                     -ANYU*(DJJ(4,1)*AX(I1,J1)+DJJ(4,2)*AY(I1,J1)+DJJ(4,3)*AZ(I1,J1)+DJJ(4,4)*BX(I1,J1)+DJJ(4,5)*BY(I1,J1)+&
-                     DJJ(4,6)*BZ(I1,J1)+DJJ(4,7)*CXY(I1,J1)+DJJ(4,8)*CYZ(I1,J1)+DJJ(4,9)*CZX(I1,J1)+DJJ(5,1)*AX(I1,J1)+DJJ(5,2)*AY(I1,J1)+DJJ(5,3)*AZ(I1,J1)+&
-                     DJJ(5,4)*BX(I1,J1)+DJJ(5,5)*BY(I1,J1)+DJJ(5,6)*BZ(I1,J1)+DJJ(5,7)*CXY(I1,J1)+DJJ(5,8)*CYZ(I1,J1)+DJJ(5,9)*CZX(I1,J1)+DJJ(6,1)*AX(I1,J1)+&
-                     DJJ(6,2)*AY(I1,J1)+DJJ(6,3)*AZ(I1,J1)+DJJ(6,4)*BX(I1,J1)+DJJ(6,5)*BY(I1,J1)+DJJ(6,6)*BZ(I1,J1)+DJJ(6,7)*CXY(I1,J1)+DJJ(6,8)*CYZ(I1,J1)+&
-                     DJJ(6,9)*CZX(I1,J1))
-                BBUVP(IIB+IAN*IAT,JJB+IAN*IAT)=0.0D0
-                BBUVP(IIB+IAN*IAT,JJB+2*IAN*IAT)=0.0D0
-                BBUVP(IIB+IAN*IAT,JJB+3*IAN*IAT)=1.0D0/ROU*(DJJ(1,1)*AX(I1,J1)+DJJ(1,2)*AY(I1,J1)+DJJ(1,3)*AZ(I1,J1)+DJJ(1,4)*BX(I1,J1)+DJJ(1,5)*BY(I1,J1)+DJJ(1,6)*BZ(I1,J1)+&
-                     DJJ(1,7)*CXY(I1,J1)+DJJ(1,8)*CYZ(I1,J1)+DJJ(1,9)*CZX(I1,J1))
-                BBUVP(IIB+2*IAN*IAT,JJB)=0.0D0
-                BBUVP(IIB+2*IAN*IAT,JJB+IAN*IAT)=U(ITT,II)*(DJJ(1,1)*AX(I1,J1)+DJJ(1,2)*AY(I1,J1)+DJJ(1,3)*AZ(I1,J1)+DJJ(1,4)*BX(I1,J1)+DJJ(1,5)*BY(I1,J1)+DJJ(1,6)*BZ(I1,J1)+&
-                     DJJ(1,7)*CXY(I1,J1)+DJJ(1,8)*CYZ(I1,J1)+DJJ(1,9)*CZX(I1,J1))+V(ITT,II)*(DJJ(2,1)*AX(I1,J1)+DJJ(2,2)*AY(I1,J1)+DJJ(2,3)*AZ(I1,J1)+DJJ(2,4)*BX(I1,J1)+&
-                     DJJ(2,5)*BY(I1,J1)+DJJ(2,6)*BZ(I1,J1)+DJJ(2,7)*CXY(I1,J1)+DJJ(2,8)*CYZ(I1,J1)+DJJ(2,9)*CZX(I1,J1))+W(ITT,II)*(DJJ(3,1)*AX(I1,J1)+DJJ(3,2)*AY(I1,J1)+&
-                     DJJ(3,3)*AZ(I1,J1)+DJJ(3,4)*BX(I1,J1)+DJJ(3,5)*BY(I1,J1)+DJJ(3,6)*BZ(I1,J1)+ DJJ(3,7)*CXY(I1,J1)+DJJ(3,8)*CYZ(I1,J1)+DJJ(3,9)*CZX(I1,J1))-&
-                     ANYU*(DJJ(4,1)*AX(I1,J1)+DJJ(4,2)*AY(I1,J1)+DJJ(4,3)*AZ(I1,J1)+DJJ(4,4)*BX(I1,J1)+DJJ(4,5)*BY(I1,J1)+&
-                     DJJ(4,6)*BZ(I1,J1)+DJJ(4,7)*CXY(I1,J1)+DJJ(4,8)*CYZ(I1,J1)+DJJ(4,9)*CZX(I1,J1)+DJJ(5,1)*AX(I1,J1)+DJJ(5,2)*AY(I1,J1)+DJJ(5,3)*AZ(I1,J1)+&
-                     DJJ(5,4)*BX(I1,J1)+DJJ(5,5)*BY(I1,J1)+DJJ(5,6)*BZ(I1,J1)+DJJ(5,7)*CXY(I1,J1)+DJJ(5,8)*CYZ(I1,J1)+DJJ(5,9)*CZX(I1,J1)+DJJ(6,1)*AX(I1,J1)+&
-                     DJJ(6,2)*AY(I1,J1)+DJJ(6,3)*AZ(I1,J1)+DJJ(6,4)*BX(I1,J1)+DJJ(6,5)*BY(I1,J1)+DJJ(6,6)*BZ(I1,J1)+DJJ(6,7)*CXY(I1,J1)+DJJ(6,8)*CYZ(I1,J1)+&
-                     DJJ(6,9)*CZX(I1,J1))
-                BBUVP(IIB+2*IAN*IAT,JJB+2*IAN*IAT)=0.0D0
-                BBUVP(IIB+2*IAN*IAT,JJB+3*IAN*IAT)=1.0D0/ROU*(DJJ(2,1)*AX(I1,J1)+DJJ(2,2)*AY(I1,J1)+DJJ(2,3)*AZ(I1,J1)+DJJ(2,4)*BX(I1,J1)+DJJ(2,5)*BY(I1,J1)+DJJ(2,6)*BZ(I1,J1)+&
-                     DJJ(2,7)*CXY(I1,J1)+DJJ(2,8)*CYZ(I1,J1)+DJJ(2,9)*CZX(I1,J1))
-                BBUVP(IIB+3*IAN*IAT,JJB)=0.0D0
-                BBUVP(IIB+3*IAN*IAT,JJB+IAN*IAT)=0.0D0
-                BBUVP(IIB+3*IAN*IAT,JJB+2*IAN*IAT)=U(ITT,II)*(DJJ(1,1)*AX(I1,J1)+DJJ(1,2)*AY(I1,J1)+DJJ(1,3)*AZ(I1,J1)+DJJ(1,4)*BX(I1,J1)+DJJ(1,5)*BY(I1,J1)+DJJ(1,6)*BZ(I1,J1)+&
-                     DJJ(1,7)*CXY(I1,J1)+DJJ(1,8)*CYZ(I1,J1)+DJJ(1,9)*CZX(I1,J1))+V(ITT,II)*(DJJ(2,1)*AX(I1,J1)+DJJ(2,2)*AY(I1,J1)+DJJ(2,3)*AZ(I1,J1)+DJJ(2,4)*BX(I1,J1)+&
-                     DJJ(2,5)*BY(I1,J1)+DJJ(2,6)*BZ(I1,J1)+DJJ(2,7)*CXY(I1,J1)+DJJ(2,8)*CYZ(I1,J1)+DJJ(2,9)*CZX(I1,J1))+W(ITT,II)*(DJJ(3,1)*AX(I1,J1)+DJJ(3,2)*AY(I1,J1)+&
-                     DJJ(3,3)*AZ(I1,J1)+DJJ(3,4)*BX(I1,J1)+DJJ(3,5)*BY(I1,J1)+DJJ(3,6)*BZ(I1,J1)+ DJJ(3,7)*CXY(I1,J1)+DJJ(3,8)*CYZ(I1,J1)+DJJ(3,9)*CZX(I1,J1))-&
-                     ANYU*(DJJ(4,1)*AX(I1,J1)+DJJ(4,2)*AY(I1,J1)+DJJ(4,3)*AZ(I1,J1)+DJJ(4,4)*BX(I1,J1)+DJJ(4,5)*BY(I1,J1)+&
-                     DJJ(4,6)*BZ(I1,J1)+DJJ(4,7)*CXY(I1,J1)+DJJ(4,8)*CYZ(I1,J1)+DJJ(4,9)*CZX(I1,J1)+DJJ(5,1)*AX(I1,J1)+DJJ(5,2)*AY(I1,J1)+DJJ(5,3)*AZ(I1,J1)+&
-                     DJJ(5,4)*BX(I1,J1)+DJJ(5,5)*BY(I1,J1)+DJJ(5,6)*BZ(I1,J1)+DJJ(5,7)*CXY(I1,J1)+DJJ(5,8)*CYZ(I1,J1)+DJJ(5,9)*CZX(I1,J1)+DJJ(6,1)*AX(I1,J1)+&
-                     DJJ(6,2)*AY(I1,J1)+DJJ(6,3)*AZ(I1,J1)+DJJ(6,4)*BX(I1,J1)+DJJ(6,5)*BY(I1,J1)+DJJ(6,6)*BZ(I1,J1)+DJJ(6,7)*CXY(I1,J1)+DJJ(6,8)*CYZ(I1,J1)+&
-                     DJJ(6,9)*CZX(I1,J1))
-                BBUVP(IIB+3*IAN*IAT,JJB+3*IAN*IAT)=1.0D0/ROU*(DJJ(3,1)*AX(I1,J1)+DJJ(3,2)*AY(I1,J1)+DJJ(3,3)*AZ(I1,J1)+DJJ(3,4)*BX(I1,J1)+DJJ(3,5)*BY(I1,J1)+DJJ(3,6)*BZ(I1,J1)+&
-                     DJJ(3,7)*CXY(I1,J1)+DJJ(3,8)*CYZ(I1,J1)+DJJ(3,9)*CZX(I1,J1))
-                END IF
-                END IF
-                              
-                IF(ITT.NE.JTT) THEN
-                IF(I1.EQ.J1) THEN
-                BBUVP(IIB,JJB)=0.0D0
-                BBUVP(IIB,JJB+IAN*IAT)=0.0D0
-                BBUVP(IIB,JJB+2*IAN*IAT)=0.0D0
-                BBUVP(IIB,JJB+3*IAN*IAT)=0.0D0
-                BBUVP(IIB+IAN*IAT,JJB)=0.0D0*AT(ITT,JTT)/DT
-                BBUVP(IIB+IAN*IAT,JJB+IAN*IAT)=0.0D0
-                BBUVP(IIB+IAN*IAT,JJB+2*IAN*IAT)=0.0D0
-                BBUVP(IIB+IAN*IAT,JJB+3*IAN*IAT)=0.0D0
-                BBUVP(IIB+2*IAN*IAT,JJB)=0.0D0
-                BBUVP(IIB+2*IAN*IAT,JJB+IAN*IAT)=0.0D0*AT(ITT,JTT)/DT
-                BBUVP(IIB+2*IAN*IAT,JJB+2*IAN*IAT)=0.0D0
-                BBUVP(IIB+2*IAN*IAT,JJB+3*IAN*IAT)=0.0D0
-                BBUVP(IIB+3*IAN*IAT,JJB)=0.0D0
-                BBUVP(IIB+3*IAN*IAT,JJB+IAN*IAT)=0.0D0
-                BBUVP(IIB+3*IAN*IAT,JJB+2*IAN*IAT)=0.0D0*AT(ITT,JTT)/DT
-                BBUVP(IIB+3*IAN*IAT,JJB+3*IAN*IAT)=0.0D0
-                END IF
-                IF(I1.NE.J1) THEN
-                BBUVP(IIB,JJB)=0.0D0
-                BBUVP(IIB,JJB+IAN*IAT)=0.0D0
-                BBUVP(IIB,JJB+2*IAN*IAT)=0.0D0
-                BBUVP(IIB,JJB+3*IAN*IAT)=0.0D0
-                BBUVP(IIB+IAN*IAT,JJB)=0.0D0
-                BBUVP(IIB+IAN*IAT,JJB+IAN*IAT)=0.0D0
-                BBUVP(IIB+IAN*IAT,JJB+2*IAN*IAT)=0.0D0
-                BBUVP(IIB+IAN*IAT,JJB+3*IAN*IAT)=0.0D0
-                BBUVP(IIB+2*IAN*IAT,JJB)=0.0D0
-                BBUVP(IIB+2*IAN*IAT,JJB+IAN*IAT)=0.0D0
-                BBUVP(IIB+2*IAN*IAT,JJB+2*IAN*IAT)=0.0D0
-                BBUVP(IIB+2*IAN*IAT,JJB+3*IAN*IAT)=0.0D0
-                BBUVP(IIB+3*IAN*IAT,JJB)=0.0D0
-                BBUVP(IIB+3*IAN*IAT,JJB+IAN*IAT)=0.0D0
-                BBUVP(IIB+3*IAN*IAT,JJB+2*IAN*IAT)=0.0D0
-                BBUVP(IIB+3*IAN*IAT,JJB+3*IAN*IAT)=0.0D0
-                END IF
+!                 FULL_NEWTON_PRODUCT_RULE_BEGIN
+!                 d[(v.grad)q] = (dv.grad)q + (v.grad)dq.
+!                 DDELTA_NODE applies the coefficient-velocity derivative
+!                 only to the collocation node whose velocity is varied.
+                  DDELTA_NODE=0.0D0
+                  IF(I1.EQ.J1) DDELTA_NODE=1.0D0
+                  DDX=TAXUVP1(J1)
+                  DDY=TAYUVP1(J1)
+                  DDZ=TAZUVP1(J1)
+                  DLIN_LAP=TBXUVP1(J1)+TBYUVP1(J1)+TBZUVP1(J1)
+                  DNEWTON_TRANSPORT=U(ITT,II)*DDX+V(ITT,II)*DDY+W(ITT,II)*DDZ
+                  DNEWTON_DIAG=DNEWTON_TRANSPORT-ANYU*DLIN_LAP
+
+                  BBUVP(IIB,JJB)=DDX
+                  BBUVP(IIB,JJB+IAN*IAT)=DDY
+                  BBUVP(IIB,JJB+2*IAN*IAT)=DDZ
+                  BBUVP(IIB,JJB+3*IAN*IAT)=0.0D0
+
+!                 U equation: d(u*u_x + v*u_y + w*u_z).
+                  BBUVP(IIB+IAN*IAT,JJB)=DNEWTON_DIAG+DDELTA_NODE*TAXU
+                  BBUVP(IIB+IAN*IAT,JJB+IAN*IAT)=DDELTA_NODE*TAYU
+                  BBUVP(IIB+IAN*IAT,JJB+2*IAN*IAT)=DDELTA_NODE*TAZU
+                  BBUVP(IIB+IAN*IAT,JJB+3*IAN*IAT)=DDX/ROU
+
+!                 V equation: d(u*v_x + v*v_y + w*v_z).
+                  BBUVP(IIB+2*IAN*IAT,JJB)=DDELTA_NODE*TAXV
+                  BBUVP(IIB+2*IAN*IAT,JJB+IAN*IAT)=DNEWTON_DIAG+DDELTA_NODE*TAYV
+                  BBUVP(IIB+2*IAN*IAT,JJB+2*IAN*IAT)=DDELTA_NODE*TAZV
+                  BBUVP(IIB+2*IAN*IAT,JJB+3*IAN*IAT)=DDY/ROU
+
+!                 W equation: d(u*w_x + v*w_y + w*w_z).
+                  BBUVP(IIB+3*IAN*IAT,JJB)=DDELTA_NODE*TAXW
+                  BBUVP(IIB+3*IAN*IAT,JJB+IAN*IAT)=DDELTA_NODE*TAYW
+                  BBUVP(IIB+3*IAN*IAT,JJB+2*IAN*IAT)=DNEWTON_DIAG+DDELTA_NODE*TAZW
+                  BBUVP(IIB+3*IAN*IAT,JJB+3*IAN*IAT)=DDZ/ROU
+!                 FULL_NEWTON_PRODUCT_RULE_END
                 END IF
                 IF(.FALSE.) THEN
                   BBUVP(IIB,JJB)=0.0D0
@@ -1011,17 +1026,6 @@
                   BBUVP(IIB,JJB+2*IAN*IAT)=TAZUVP1(J1)
                   BBUVP(IIB,JJB+3*IAN*IAT)=0.0D0
                 END IF
-                IF(IPICARD_CONV_JAC.NE.0.AND.ITT.EQ.JTT.AND.I1.EQ.J1) THEN
-                  BBUVP(IIB+IAN*IAT,JJB)=BBUVP(IIB+IAN*IAT,JJB)-TAXU
-                  BBUVP(IIB+IAN*IAT,JJB+IAN*IAT)=BBUVP(IIB+IAN*IAT,JJB+IAN*IAT)-TAYU
-                  BBUVP(IIB+IAN*IAT,JJB+2*IAN*IAT)=BBUVP(IIB+IAN*IAT,JJB+2*IAN*IAT)-TAZU
-                  BBUVP(IIB+2*IAN*IAT,JJB)=BBUVP(IIB+2*IAN*IAT,JJB)-TAXV
-                  BBUVP(IIB+2*IAN*IAT,JJB+IAN*IAT)=BBUVP(IIB+2*IAN*IAT,JJB+IAN*IAT)-TAYV
-                  BBUVP(IIB+2*IAN*IAT,JJB+2*IAN*IAT)=BBUVP(IIB+2*IAN*IAT,JJB+2*IAN*IAT)-TAZV
-                  BBUVP(IIB+3*IAN*IAT,JJB)=BBUVP(IIB+3*IAN*IAT,JJB)-TAXW
-                  BBUVP(IIB+3*IAN*IAT,JJB+IAN*IAT)=BBUVP(IIB+3*IAN*IAT,JJB+IAN*IAT)-TAYW
-                  BBUVP(IIB+3*IAN*IAT,JJB+2*IAN*IAT)=BBUVP(IIB+3*IAN*IAT,JJB+2*IAN*IAT)-TAZW
-                END IF
                 IF(ITT.EQ.JTT) THEN
                   DLIN_LAP=DJJ(4,1)*AX(I1,J1)+DJJ(4,2)*AY(I1,J1)+DJJ(4,3)*AZ(I1,J1)+DJJ(4,4)*BX(I1,J1)+&
                        DJJ(4,5)*BY(I1,J1)+DJJ(4,6)*BZ(I1,J1)+DJJ(4,7)*CXY(I1,J1)+DJJ(4,8)*CYZ(I1,J1)+DJJ(4,9)*CZX(I1,J1)+&
@@ -1045,6 +1049,17 @@
                   BBUVP_LIN(IIB+2*IAN*IAT,JJB+3*IAN*IAT)=DLIN_GY/ROU
                   BBUVP_LIN(IIB+3*IAN*IAT,JJB+2*IAN*IAT)=-ANYU*DLIN_LAP
                   BBUVP_LIN(IIB+3*IAN*IAT,JJB+3*IAN*IAT)=DLIN_GZ/ROU
+                END IF
+!               The temporal derivative couples the same velocity component
+!               and spatial node across all temporal collocation points.
+                IF(I1.EQ.J1) THEN
+                  DTIME_JAC=AT(ITT,JTT)/DT
+                  BBUVP(IIB+IAN*IAT,JJB)=BBUVP(IIB+IAN*IAT,JJB)+DTIME_JAC
+                  BBUVP(IIB+2*IAN*IAT,JJB+IAN*IAT)=BBUVP(IIB+2*IAN*IAT,JJB+IAN*IAT)+DTIME_JAC
+                  BBUVP(IIB+3*IAN*IAT,JJB+2*IAN*IAT)=BBUVP(IIB+3*IAN*IAT,JJB+2*IAN*IAT)+DTIME_JAC
+                  BBUVP_LIN(IIB+IAN*IAT,JJB)=BBUVP_LIN(IIB+IAN*IAT,JJB)+DTIME_JAC
+                  BBUVP_LIN(IIB+2*IAN*IAT,JJB+IAN*IAT)=BBUVP_LIN(IIB+2*IAN*IAT,JJB+IAN*IAT)+DTIME_JAC
+                  BBUVP_LIN(IIB+3*IAN*IAT,JJB+2*IAN*IAT)=BBUVP_LIN(IIB+3*IAN*IAT,JJB+2*IAN*IAT)+DTIME_JAC
                 END IF
              END IF
              
@@ -1088,7 +1103,7 @@
         
 !        write(*,*)'clear 005!'
 
-        IF(I1.GE.8+4*(NAX+NAY+NAZ)+2*(NAX*NAY+NAX*NAZ+NAY*NAZ).AND.I1.LE.8+4*(NAX+NAY+NAZ)+2*(NAX*NAY+NAX*NAZ+NAY*NAZ)+NAX*NAY*NAZ) THEN
+        IF(I1.GT.8+4*(NAX+NAY+NAZ)+2*(NAX*NAY+NAX*NAZ+NAY*NAZ).AND.I1.LE.8+4*(NAX+NAY+NAZ)+2*(NAX*NAY+NAX*NAZ+NAY*NAZ)+NAX*NAY*NAZ) THEN
           DO IJ=1,IAN
             TAXUVP1(IJ)=DJJ(1,1)*AX(I1,IJ)+DJJ(1,2)*AY(I1,IJ)+DJJ(1,3)*AZ(I1,IJ)+DJJ(1,4)*BX(I1,IJ)+DJJ(1,5)*BY(I1,IJ)+DJJ(1,6)*BZ(I1,IJ)+DJJ(1,7)*CXY(I1,IJ)+DJJ(1,8)*CYZ(I1,IJ)+DJJ(1,9)*CZX(I1,IJ)
             TAYUVP1(IJ)=DJJ(2,1)*AX(I1,IJ)+DJJ(2,2)*AY(I1,IJ)+DJJ(2,3)*AZ(I1,IJ)+DJJ(2,4)*BX(I1,IJ)+DJJ(2,5)*BY(I1,IJ)+DJJ(2,6)*BZ(I1,IJ)+DJJ(2,7)*CXY(I1,IJ)+DJJ(2,8)*CYZ(I1,IJ)+DJJ(2,9)*CZX(I1,IJ)
@@ -1105,7 +1120,7 @@
             PP1(IJ)=P(ITT,IE(IJ,IM))
           END DO
           DO IJ=1,IAT
-            TATUVP1(IJ)=0.0D0*AT(ITT,IJ)/DT
+            TATUVP1(IJ)=AT(ITT,IJ)/DT
             UUT1(IJ)=U(IJ,IE(I1,IM))
             VVT1(IJ)=V(IJ,IE(I1,IM))
             WWT1(IJ)=W(IJ,IE(I1,IM))
@@ -1153,9 +1168,9 @@
             FFUVP(IIB+IAN*IAT*2)=TATV+U(ITT,II)*TAXV+V(ITT,II)*TAYV+W(ITT,II)*TAZV-ANYU*(TBXV+TBYV+TBZV)+1.0D0/ROU*TAYP
             FFUVP(IIB+IAN*IAT*3)=TATW+U(ITT,II)*TAXW+V(ITT,II)*TAYW+W(ITT,II)*TAZW-ANYU*(TBXW+TBYW+TBZW)+1.0D0/ROU*TAZP
             FFUVP_LIN(IIB)=TAXU+TAYV+TAZW
-            FFUVP_LIN(IIB+IAN*IAT)=-ANYU*(TBYU+TBXU+TBZU)+1.0D0/ROU*TAXP
-            FFUVP_LIN(IIB+IAN*IAT*2)=-ANYU*(TBXV+TBYV+TBZV)+1.0D0/ROU*TAYP
-            FFUVP_LIN(IIB+IAN*IAT*3)=-ANYU*(TBXW+TBYW+TBZW)+1.0D0/ROU*TAZP
+            FFUVP_LIN(IIB+IAN*IAT)=TATU-ANYU*(TBYU+TBXU+TBZU)+1.0D0/ROU*TAXP
+            FFUVP_LIN(IIB+IAN*IAT*2)=TATV-ANYU*(TBXV+TBYV+TBZV)+1.0D0/ROU*TAYP
+            FFUVP_LIN(IIB+IAN*IAT*3)=TATW-ANYU*(TBXW+TBYW+TBZW)+1.0D0/ROU*TAZP
             IF(IDIAG_LOCAL_MOM.NE.0.AND.IPK.GE.30.AND.ITT.EQ.1.AND.(II.EQ.344.OR.II.EQ.349.OR.II.EQ.379.OR.II.EQ.399.OR.II.EQ.404.OR.II.EQ.1759)) THEN
               WRITE(*,*)'LOCAL_MOM_SPLIT NODE/XYZ/U/V/W/P=',II,XX(II),YY(II),ZZ(II),U(ITT,II),V(ITT,II),W(ITT,II),P(ITT,II)
               WRITE(*,*)'LOCAL_CONT DIV/TAXU/TAYV/TAZW=',FFUVP(IIB),TAXU,TAYV,TAZW
@@ -1173,7 +1188,7 @@
               WRITE(*,*)'LOCAL_LAP U/V/W=',TBYU+TBXU+TBZU,TBXV+TBYV+TBZV,TBXW+TBYW+TBZW
               WRITE(*,*)'LOCAL_PGRAD TAX/TAY/TAZ=',TAXP,TAYP,TAZP
 !!$OMP CRITICAL(LOCAL_MOM_DEBUG)
-              OPEN(96,FILE='results\local_mom_split_debug.dat',STATUS='UNKNOWN',POSITION='APPEND')
+              OPEN(96,FILE='results/local_mom_split_debug.dat',STATUS='UNKNOWN',POSITION='APPEND')
               WRITE(96,'(A,2I8,1P,28E24.15)')'LOCAL_SPLIT',II,ITT,XX(II),YY(II),ZZ(II),U(ITT,II),V(ITT,II),W(ITT,II),P(ITT,II),&
                    FFUVP(IIB),FFUVP(IIB+IAN*IAT),FFUVP(IIB+IAN*IAT*2),FFUVP(IIB+IAN*IAT*3),&
                    TATU,U(ITT,II)*TAXU+V(ITT,II)*TAYU+W(ITT,II)*TAZU,-ANYU*(TBYU+TBXU+TBZU),1.0D0/ROU*TAXP,&
@@ -1215,13 +1230,31 @@
 !       Keep this loop serial while triplet assembly uses a shared append-only buffer.
 !       Parallel calls to triplet_add race on SPARSE_ELEMENT_A%nnz and corrupt CSR input.
         DO JA1=1,IAN
-            IF(JA1.GT.8+4*(NAX+NAY+NAZ)+2*NAX*NAY+2*NAX*NAZ+2*NAY*NAZ.AND.&
-               JA1.LE.8+4*(NAX+NAY+NAZ)+2*NAX*NAY+2*NAX*NAZ+2*NAY*NAZ+NAX*NAY*NAZ) THEN
+            IASSEMBLE=0
+            IINTERFACE=0
+            IF(JA1.GT.8+4*(NAX+NAY+NAZ)+2*(NAX*NAY+NAX*NAZ+NAY*NAZ).AND.&
+               JA1.LE.IAN) IASSEMBLE=1
+            IF((IM.GT.1.AND.JA1.GE.9+4*(NAX+NAY+NAZ)+2*NAX*NAY+2*NAX*NAZ+NAY*NAZ.AND.&
+                JA1.LE.8+4*(NAX+NAY+NAZ)+2*(NAX*NAY+NAX*NAZ+NAY*NAZ)).OR.&
+               (IM.LT.MX.AND.JA1.GE.9+4*(NAX+NAY+NAZ)+2*NAX*NAY+NAX*NAZ.AND.&
+                JA1.LE.8+4*(NAX+NAY+NAZ)+2*NAX*NAY+NAX*NAZ+NAY*NAZ)) THEN
+              IASSEMBLE=1
+              IINTERFACE=1
+            END IF
+            IF(IASSEMBLE.NE.0) THEN
         DO ITT=1,IAT 
             II1=IE(JA1,IM)
 !           Source equation order in FFUVP/BBUVP is CONT,U,V,W.
 !           Global residual row order is CONT,V,W,U.
             IK1G=GLOBAL_EQUATION_BLOCK(IK1)
+!           Interface local rows are U,V,W,P, not CONT,U,V,W.
+!           Outward-normal contributions from both elements are summed.
+            IF(IINTERFACE.NE.0) THEN
+              IF(IK1.EQ.1) IK1G=4
+              IF(IK1.EQ.2) IK1G=2
+              IF(IK1.EQ.3) IK1G=3
+              IF(IK1.EQ.4) IK1G=1
+            END IF
             ISP1=GLOBAL_EQUATION_INDEX(ITT,II1,IK1G,NX,IAT)
             IPL1=ITT+(JA1-1)*IAT+IAN*IAT*(IK1-1)
             IIT(ISP1)=IIT(ISP1)+1
@@ -1233,6 +1266,7 @@
                 JJ2=IE(JA2,IM)
                 ISP2=GLOBAL_DOF_INDEX(JTT,JJ2,IK2,NX,IAT)
                 IPL2=JTT+(JA2-1)*IAT+IAN*IAT*(IK2-1)
+                IF(IINTERFACE.NE.0) BBUVP_LIN(IPL1,IPL2)=BBUVP(IPL1,IPL2)
                 call triplet_add(SPARSE_ELEMENT_A, ISP1, ISP2, BBUVP(IPL1,IPL2))
                 IF(BBUVP_LIN(IPL1,IPL2).NE.0.0D0) THEN
                   call triplet_add(SPARSE_LINEAR_A, ISP1, ISP2, BBUVP_LIN(IPL1,IPL2))
@@ -1241,6 +1275,7 @@
               END DO
               END DO 
             FFS(ISP1)=FFS(ISP1)+FFUVP(IPL1)
+            IF(IINTERFACE.NE.0) FFUVP_LIN(IPL1)=FFUVP(IPL1)
             FFS_LINEAR(ISP1)=FFS_LINEAR(ISP1)+FFUVP_LIN(IPL1)
             IF(.FALSE..AND.IDIAG_LOCAL_MOM.NE.0.AND.ITT.EQ.1.AND.(II1.EQ.202.OR.II1.EQ.622).AND.IK1.GE.1.AND.IK1.LE.4) THEN
               WRITE(*,*)'SUPERPOSE_CONTRIB NODE/IM/JA1/EQ/ROW/FFUVP/FFLIN=',II1,IM,JA1,IK1,ISP1,FFUVP(IPL1),FFUVP_LIN(IPL1)
@@ -1260,7 +1295,7 @@
         IF(ITARGET.EQ.2) ITNODE=344
         IF(ITARGET.EQ.3) ITNODE=374
         IF(ITARGET.EQ.4) ITNODE=622
-        IF(IPK.LE.12) THEN
+      IF(IFAST_PRODUCTION.EQ.0.AND.IPK.LE.12) THEN
         DO IBLOCK=1,4
           IROWCHK=GLOBAL_EQUATION_INDEX(1,ITNODE,IBLOCK,NX,IAT)
           DROW_DOT=0.0D0
@@ -1289,18 +1324,18 @@
 !     triplet_add updates a shared nnz counter; keep boundary triplet assembly serial.
       DO J1=1,IAN
         IF((J1.GE.9+4*(NAX+NAY+NAZ)+2*NAX*NAY+NAX*NAZ.AND.J1.LE.8+4*(NAX+NAY+NAZ)+2*NAX*NAY+NAX*NAZ+NAY*NAZ)) THEN
-        II=IE(J1,5)
+        II=IE(J1,MX)
         DO ITT=1,IAT
         ISP1=GLOBAL_EQUATION_INDEX(ITT,II,4,NX,IAT)
         
-        CALL TRANSF(5,AX,AY,AZ,BX,BY,BZ,CXY,CYZ,CZX)
+        CALL TRANSF(MX,AX,AY,AZ,BX,BY,BZ,CXY,CYZ,CZX)
         DO IQ1=1,9
         DO IQ2=1,9
           DJJ(IQ1,IQ2)=DJJA(IQ1,IQ2,J1)
         END DO
         END DO
           DO IJ=1,IAN
-            ISP2=GLOBAL_DOF_INDEX(ITT,IE(IJ,5),BLOCK_U,NX,IAT)
+            ISP2=GLOBAL_DOF_INDEX(ITT,IE(IJ,MX),BLOCK_U,NX,IAT)
             call triplet_add(SPARSE_PRESSURE_WALL_A, ISP1, ISP2, (DJJ(1,1)*AX(J1,IJ)+DJJ(1,2)*AY(J1,IJ)+DJJ(1,3)*AZ(J1,IJ)+DJJ(1,4)*BX(J1,IJ)+DJJ(1,5)*BY(J1,IJ)+DJJ(1,6)*BZ(J1,IJ)+&
                  DJJ(1,7)*CXY(J1,IJ)+DJJ(1,8)*CYZ(J1,IJ)+DJJ(1,9)*CZX(J1,IJ)))
                  
@@ -1308,7 +1343,7 @@
           
           TBYU=0.0D0
           DO IJ=1,IAN
-          JJ=IE(IJ,5)
+          JJ=IE(IJ,MX)
           TBYU=TBYU+(DJJ(1,1)*AX(J1,IJ)+DJJ(1,2)*AY(J1,IJ)+DJJ(1,3)*AZ(J1,IJ)+DJJ(1,4)*BX(J1,IJ)+DJJ(1,5)*BY(J1,IJ)+DJJ(1,6)*BZ(J1,IJ)+&
                  DJJ(1,7)*CXY(J1,IJ)+DJJ(1,8)*CYZ(J1,IJ)+DJJ(1,9)*CZX(J1,IJ))*U(ITT,JJ)
           END DO
@@ -1324,11 +1359,11 @@
       
       DO J1=1,IAN
         IF((J1.GE.9+4*(NAX+NAY+NAZ)+2*NAX*NAY+NAX*NAZ.AND.J1.LE.8+4*(NAX+NAY+NAZ)+2*NAX*NAY+NAX*NAZ+NAY*NAZ)) THEN
-        II=IE(J1,5)
+        II=IE(J1,MX)
         DO ITT=1,IAT
         ISP1=GLOBAL_EQUATION_INDEX(ITT,II,2,NX,IAT)
         
-        CALL TRANSF(5,AX,AY,AZ,BX,BY,BZ,CXY,CYZ,CZX)
+        CALL TRANSF(MX,AX,AY,AZ,BX,BY,BZ,CXY,CYZ,CZX)
         DO IQ1=1,9
         DO IQ2=1,9
           DJJ(IQ1,IQ2)=DJJA(IQ1,IQ2,J1)
@@ -1336,7 +1371,7 @@
         END DO
 !         triplet_add updates a shared nnz counter; keep boundary triplet assembly serial.
           DO IJ=1,IAN
-            ISP2=GLOBAL_DOF_INDEX(ITT,IE(IJ,5),BLOCK_V,NX,IAT)
+            ISP2=GLOBAL_DOF_INDEX(ITT,IE(IJ,MX),BLOCK_V,NX,IAT)
             call triplet_add(SPARSE_PRESSURE_WALL_A, ISP1, ISP2, (DJJ(1,1)*AX(J1,IJ)+DJJ(1,2)*AY(J1,IJ)+DJJ(1,3)*AZ(J1,IJ)+DJJ(1,4)*BX(J1,IJ)+DJJ(1,5)*BY(J1,IJ)+DJJ(1,6)*BZ(J1,IJ)+&
                  DJJ(1,7)*CXY(J1,IJ)+DJJ(1,8)*CYZ(J1,IJ)+DJJ(1,9)*CZX(J1,IJ)))
           END DO
@@ -1345,7 +1380,7 @@
 !         !$OMP parallel private(IJ,JJ)
 !         !$OMP do reduction(+ : TBYV)
           DO IJ=1,IAN
-          JJ=IE(IJ,5)
+          JJ=IE(IJ,MX)
           TBYV=TBYV+(DJJ(1,1)*AX(J1,IJ)+DJJ(1,2)*AY(J1,IJ)+DJJ(1,3)*AZ(J1,IJ)+DJJ(1,4)*BX(J1,IJ)+DJJ(1,5)*BY(J1,IJ)+DJJ(1,6)*BZ(J1,IJ)+&
                  DJJ(1,7)*CXY(J1,IJ)+DJJ(1,8)*CYZ(J1,IJ)+DJJ(1,9)*CZX(J1,IJ))*V(ITT,JJ)
           END DO
@@ -1362,11 +1397,11 @@
       
       DO J1=1,IAN
         IF((J1.GE.9+4*(NAX+NAY+NAZ)+2*NAX*NAY+NAX*NAZ.AND.J1.LE.8+4*(NAX+NAY+NAZ)+2*NAX*NAY+NAX*NAZ+NAY*NAZ)) THEN
-        II=IE(J1,5)
+        II=IE(J1,MX)
         DO ITT=1,IAT
         ISP1=GLOBAL_EQUATION_INDEX(ITT,II,3,NX,IAT)
         
-        CALL TRANSF(5,AX,AY,AZ,BX,BY,BZ,CXY,CYZ,CZX)
+        CALL TRANSF(MX,AX,AY,AZ,BX,BY,BZ,CXY,CYZ,CZX)
         DO IQ1=1,9
         DO IQ2=1,9
           DJJ(IQ1,IQ2)=DJJA(IQ1,IQ2,J1)
@@ -1374,7 +1409,7 @@
         END DO
 !         triplet_add updates a shared nnz counter; keep boundary triplet assembly serial.
           DO IJ=1,IAN
-            ISP2=GLOBAL_DOF_INDEX(ITT,IE(IJ,5),BLOCK_W,NX,IAT)
+            ISP2=GLOBAL_DOF_INDEX(ITT,IE(IJ,MX),BLOCK_W,NX,IAT)
             call triplet_add(SPARSE_PRESSURE_WALL_A, ISP1, ISP2, (DJJ(1,1)*AX(J1,IJ)+DJJ(1,2)*AY(J1,IJ)+DJJ(1,3)*AZ(J1,IJ)+DJJ(1,4)*BX(J1,IJ)+DJJ(1,5)*BY(J1,IJ)+DJJ(1,6)*BZ(J1,IJ)+&
                  DJJ(1,7)*CXY(J1,IJ)+DJJ(1,8)*CYZ(J1,IJ)+DJJ(1,9)*CZX(J1,IJ)))
           END DO
@@ -1383,7 +1418,7 @@
 !         !$OMP parallel private(IJ,JJ)
 !         !$OMP do reduction(+ : TBYW)
           DO IJ=1,IAN
-          JJ=IE(IJ,5)
+          JJ=IE(IJ,MX)
           TBYW=TBYW+(DJJ(1,1)*AX(J1,IJ)+DJJ(1,2)*AY(J1,IJ)+DJJ(1,3)*AZ(J1,IJ)+DJJ(1,4)*BX(J1,IJ)+DJJ(1,5)*BY(J1,IJ)+DJJ(1,6)*BZ(J1,IJ)+&
                  DJJ(1,7)*CXY(J1,IJ)+DJJ(1,8)*CYZ(J1,IJ)+DJJ(1,9)*CZX(J1,IJ))*W(ITT,JJ)
           END DO
@@ -1396,7 +1431,10 @@
         END IF      
       END DO
 
-!     ------------ SECOND X-DIFFERENTIAL OF PRESSURE AT INFLOW ----------------
+!     ------------ PRESSURE EXTRAPOLATION AT INFLOW ----------------
+!     Do not put the large second-differential pressure residual into FFS.
+!     The inlet pressure row is p_in - sum(c_i*p_i) = 0, where p_i are
+!     the three nearest inner pressure points with the same y,z location.
 
       J=1
       CALL TRANSF(J,AX,AY,AZ,BX,BY,BZ,CXY,CYZ,CZX)
@@ -1404,36 +1442,65 @@
       DO I1=1,IAN
         IF((I1.GE.9+4*(NAX+NAY+NAZ)+2*NAX*NAY+2*NAX*NAZ+NAY*NAZ.AND.I1.LE.8+4*(NAX+NAY+NAZ)+2*NAX*NAY+2*NAX*NAZ+2*NAY*NAZ)) THEN
         DO ITT=1,IAT
-                
-        DO IQ1=1,9
-        DO IQ2=1,9
-          DJJ(IQ1,IQ2)=DJJA(IQ1,IQ2,I1)
-        END DO
-        END DO        
-        
           JJ=IE(I1,J)
-          ISP1=GLOBAL_EQUATION_INDEX(ITT,JJ,4,NX,IAT)
+!         Boundary pressure uses row 1; row 4 is reserved for U velocity.
+          ISP1=GLOBAL_EQUATION_INDEX(ITT,JJ,1,NX,IAT)
           I_SKIP_WALL=0
           DO I3=1,NSB1
             IF(NSBU(I3).EQ.JJ) I_SKIP_WALL=1
           END DO
           IF(I_SKIP_WALL.NE.0) CYCLE
-!         triplet_add updates a shared nnz counter; keep boundary triplet assembly serial.
-          DO IJ=1,IAN
-            ISP2=GLOBAL_DOF_INDEX(ITT,IE(IJ,J),BLOCK_P,NX,IAT)
-            call triplet_add(SPARSE_PRESSURE_WALL_A, ISP1, ISP2, (DJJ(4,1)*AX(I1,IJ)+DJJ(4,2)*AY(I1,IJ)+DJJ(4,3)*AZ(I1,IJ)+DJJ(4,4)*BX(I1,IJ)+DJJ(4,5)*BY(I1,IJ)+DJJ(4,6)*BZ(I1,IJ)+&
-                 DJJ(4,7)*CXY(I1,IJ)+DJJ(4,8)*CYZ(I1,IJ)+DJJ(4,9)*CZX(I1,IJ)))
+
+          XPB=XX(JJ)
+          YPB=YY(JJ)
+          ZPB=ZZ(JJ)
+          DO KEX=1,3
+            PIN_NODE(KEX)=0
+            PIN_X(KEX)=0.0D0
+            PIN_D(KEX)=1.0D300
+            PIN_C(KEX)=0.0D0
           END DO
-          TBXP=0.0D0
-!         !$OMP parallel private(IJ,JJ)
-!         !$OMP do reduction(+ : TBXP)
+
           DO IJ=1,IAN
-            JJ=IE(IJ,J)
-            TBXP=TBXP+(DJJ(4,1)*AX(I1,IJ)+DJJ(4,2)*AY(I1,IJ)+DJJ(4,3)*AZ(I1,IJ)+DJJ(4,4)*BX(I1,IJ)+DJJ(4,5)*BY(I1,IJ)+DJJ(4,6)*BZ(I1,IJ)+&
-                 DJJ(4,7)*CXY(I1,IJ)+DJJ(4,8)*CYZ(I1,IJ)+DJJ(4,9)*CZX(I1,IJ))*P(ITT,JJ)
+            JJ2=IE(IJ,J)
+            IF(JJ2.EQ.JJ) CYCLE
+            IF(DABS(YY(JJ2)-YPB).GT.1.0D-10) CYCLE
+            IF(DABS(ZZ(JJ2)-ZPB).GT.1.0D-10) CYCLE
+            IF(XX(JJ2).LE.XPB+1.0D-12) CYCLE
+            DXPIN=XX(JJ2)-XPB
+            DO KEX=1,3
+              IF(DXPIN.LT.PIN_D(KEX)) THEN
+                DO LEX=3,KEX+1,-1
+                  PIN_D(LEX)=PIN_D(LEX-1)
+                  PIN_X(LEX)=PIN_X(LEX-1)
+                  PIN_NODE(LEX)=PIN_NODE(LEX-1)
+                END DO
+                PIN_D(KEX)=DXPIN
+                PIN_X(KEX)=XX(JJ2)
+                PIN_NODE(KEX)=JJ2
+                EXIT
+              END IF
+            END DO
           END DO
-!         !$OMP end do
-!         !$OMP end parallel
+
+          IF(PIN_NODE(1).EQ.0.OR.PIN_NODE(2).EQ.0.OR.PIN_NODE(3).EQ.0) &
+            ERROR STOP 'INLET_PRESSURE_EXTRAPOLATION_POINTS_MISSING'
+
+          DO KEX=1,3
+            PIN_C(KEX)=1.0D0
+            DO LEX=1,3
+              IF(LEX.NE.KEX) PIN_C(KEX)=PIN_C(KEX)*(XPB-PIN_X(LEX))/(PIN_X(KEX)-PIN_X(LEX))
+            END DO
+          END DO
+
+          ISP2=GLOBAL_DOF_INDEX(ITT,JJ,BLOCK_P,NX,IAT)
+          call triplet_add(SPARSE_PRESSURE_WALL_A, ISP1, ISP2, 1.0D0)
+          TBXP=P(ITT,JJ)
+          DO KEX=1,3
+            ISP2=GLOBAL_DOF_INDEX(ITT,PIN_NODE(KEX),BLOCK_P,NX,IAT)
+            call triplet_add(SPARSE_PRESSURE_WALL_A, ISP1, ISP2, -PIN_C(KEX))
+            TBXP=TBXP-PIN_C(KEX)*P(ITT,PIN_NODE(KEX))
+          END DO
           FFS(ISP1)=TBXP
           IS_REPLACED_ROW(ISP1)=1
           FFS_REPLACED_ROW(ISP1)=TBXP
@@ -1441,10 +1508,13 @@
       END IF
     END DO
 
+!     Outlet pressure is prescribed at every NSBUO node from SBPO.
+!     No outlet pressure extrapolation or single-point reference is used.
+
 
 ! -------- PRESSURE P BOUNDARY CONDITION AT WALL
       
-      DO J1=1,5
+      DO J1=1,MX
         
         CALL TRANSF(J1,AX,AY,AZ,BX,BY,BZ,CXY,CYZ,CZX)
         
@@ -1462,7 +1532,7 @@
           END DO        
         
           JJ=IE(I1,J1)
-          ISP1=GLOBAL_EQUATION_INDEX(ITT,JJ,4,NX,IAT)
+          ISP1=GLOBAL_EQUATION_INDEX(ITT,JJ,1,NX,IAT)
           I_SKIP_POUT=0
           DO I3=1,NSB3
             IF(NSBUO(I3).EQ.JJ) I_SKIP_POUT=1
@@ -1470,32 +1540,30 @@
           IF(I_SKIP_POUT.NE.0) CYCLE
 !         triplet_add updates a shared nnz counter; keep boundary triplet assembly serial.
           DO IJ=1,IAN
-            DO JTT=1,IAT
-            ISP2=GLOBAL_DOF_INDEX(JTT,IE(IJ,J1),BLOCK_U,NX,IAT)
+            ISP2=GLOBAL_DOF_INDEX(ITT,IE(IJ,J1),BLOCK_U,NX,IAT)
             call triplet_add(SPARSE_PRESSURE_WALL_A, ISP1, ISP2, -ANYU*XL(I1,J1)*(DJJ(4,1)*AX(I1,IJ)+DJJ(4,2)*AY(I1,IJ)+DJJ(4,3)*AZ(I1,IJ)+&
                  DJJ(4,4)*BX(I1,IJ)+DJJ(4,5)*BY(I1,IJ)+DJJ(4,6)*BZ(I1,IJ)+DJJ(4,7)*CXY(I1,IJ)+DJJ(4,8)*CYZ(I1,IJ)+DJJ(4,9)*CZX(I1,IJ)+&
                  DJJ(5,1)*AX(I1,IJ)+DJJ(5,2)*AY(I1,IJ)+DJJ(5,3)*AZ(I1,IJ)+DJJ(5,4)*BX(I1,IJ)+DJJ(5,5)*BY(I1,IJ)+DJJ(5,6)*BZ(I1,IJ)+&
                  DJJ(5,7)*CXY(I1,IJ)+DJJ(5,8)*CYZ(I1,IJ)+DJJ(5,9)*CZX(I1,IJ)+DJJ(6,1)*AX(I1,IJ)+DJJ(6,2)*AY(I1,IJ)+DJJ(6,3)*AZ(I1,IJ)+&
                  DJJ(6,4)*BX(I1,IJ)+DJJ(6,5)*BY(I1,IJ)+DJJ(6,6)*BZ(I1,IJ)+DJJ(6,7)*CXY(I1,IJ)+DJJ(6,8)*CYZ(I1,IJ)+DJJ(6,9)*CZX(I1,IJ)))
-            ISP2=GLOBAL_DOF_INDEX(JTT,IE(IJ,J1),BLOCK_V,NX,IAT)
+            ISP2=GLOBAL_DOF_INDEX(ITT,IE(IJ,J1),BLOCK_V,NX,IAT)
             call triplet_add(SPARSE_PRESSURE_WALL_A, ISP1, ISP2, -ANYU*XM(I1,J1)*(DJJ(4,1)*AX(I1,IJ)+DJJ(4,2)*AY(I1,IJ)+DJJ(4,3)*AZ(I1,IJ)+&
                  DJJ(4,4)*BX(I1,IJ)+DJJ(4,5)*BY(I1,IJ)+DJJ(4,6)*BZ(I1,IJ)+DJJ(4,7)*CXY(I1,IJ)+DJJ(4,8)*CYZ(I1,IJ)+DJJ(4,9)*CZX(I1,IJ)+&
                  DJJ(5,1)*AX(I1,IJ)+DJJ(5,2)*AY(I1,IJ)+DJJ(5,3)*AZ(I1,IJ)+DJJ(5,4)*BX(I1,IJ)+DJJ(5,5)*BY(I1,IJ)+DJJ(5,6)*BZ(I1,IJ)+&
                  DJJ(5,7)*CXY(I1,IJ)+DJJ(5,8)*CYZ(I1,IJ)+DJJ(5,9)*CZX(I1,IJ)+DJJ(6,1)*AX(I1,IJ)+DJJ(6,2)*AY(I1,IJ)+DJJ(6,3)*AZ(I1,IJ)+&
                  DJJ(6,4)*BX(I1,IJ)+DJJ(6,5)*BY(I1,IJ)+DJJ(6,6)*BZ(I1,IJ)+DJJ(6,7)*CXY(I1,IJ)+DJJ(6,8)*CYZ(I1,IJ)+DJJ(6,9)*CZX(I1,IJ)))
-            ISP2=GLOBAL_DOF_INDEX(JTT,IE(IJ,J1),BLOCK_W,NX,IAT)
+            ISP2=GLOBAL_DOF_INDEX(ITT,IE(IJ,J1),BLOCK_W,NX,IAT)
             call triplet_add(SPARSE_PRESSURE_WALL_A, ISP1, ISP2, -ANYU*XN(I1,J1)*(DJJ(4,1)*AX(I1,IJ)+DJJ(4,2)*AY(I1,IJ)+DJJ(4,3)*AZ(I1,IJ)+&
                  DJJ(4,4)*BX(I1,IJ)+DJJ(4,5)*BY(I1,IJ)+DJJ(4,6)*BZ(I1,IJ)+DJJ(4,7)*CXY(I1,IJ)+DJJ(4,8)*CYZ(I1,IJ)+DJJ(4,9)*CZX(I1,IJ)+&
                  DJJ(5,1)*AX(I1,IJ)+DJJ(5,2)*AY(I1,IJ)+DJJ(5,3)*AZ(I1,IJ)+DJJ(5,4)*BX(I1,IJ)+DJJ(5,5)*BY(I1,IJ)+DJJ(5,6)*BZ(I1,IJ)+&
                  DJJ(5,7)*CXY(I1,IJ)+DJJ(5,8)*CYZ(I1,IJ)+DJJ(5,9)*CZX(I1,IJ)+DJJ(6,1)*AX(I1,IJ)+DJJ(6,2)*AY(I1,IJ)+DJJ(6,3)*AZ(I1,IJ)+&
                  DJJ(6,4)*BX(I1,IJ)+DJJ(6,5)*BY(I1,IJ)+DJJ(6,6)*BZ(I1,IJ)+DJJ(6,7)*CXY(I1,IJ)+DJJ(6,8)*CYZ(I1,IJ)+DJJ(6,9)*CZX(I1,IJ)))
-            ISP2=GLOBAL_DOF_INDEX(JTT,IE(IJ,J1),BLOCK_P,NX,IAT)
+            ISP2=GLOBAL_DOF_INDEX(ITT,IE(IJ,J1),BLOCK_P,NX,IAT)
             call triplet_add(SPARSE_PRESSURE_WALL_A, ISP1, ISP2, ((DJJ(1,1)*AX(I1,IJ)+DJJ(1,2)*AY(I1,IJ)+DJJ(1,3)*AZ(I1,IJ)+DJJ(1,4)*BX(I1,IJ)+DJJ(1,5)*BY(I1,IJ)+DJJ(1,6)*BZ(I1,IJ)+&
                  DJJ(1,7)*CXY(I1,IJ)+DJJ(1,8)*CYZ(I1,IJ)+DJJ(1,9)*CZX(I1,IJ))*XL(I1,J1)+(DJJ(2,1)*AX(I1,IJ)+DJJ(2,2)*AY(I1,IJ)+DJJ(2,3)*AZ(I1,IJ)+&
                  DJJ(2,4)*BX(I1,IJ)+DJJ(2,5)*BY(I1,IJ)+DJJ(2,6)*BZ(I1,IJ)+DJJ(2,7)*CXY(I1,IJ)+DJJ(2,8)*CYZ(I1,IJ)+DJJ(2,9)*CZX(I1,IJ))*XM(I1,J1)+&
                  (DJJ(3,1)*AX(I1,IJ)+DJJ(3,2)*AY(I1,IJ)+DJJ(3,3)*AZ(I1,IJ)+DJJ(3,4)*BX(I1,IJ)+DJJ(3,5)*BY(I1,IJ)+DJJ(3,6)*BZ(I1,IJ)+&
                  DJJ(3,7)*CXY(I1,IJ)+DJJ(3,8)*CYZ(I1,IJ)+DJJ(3,9)*CZX(I1,IJ))*XN(I1,J1))/ROU)
-            END DO
           END DO
           TAXYZP=0.0D0
           TNLAPU=0.0D0
@@ -1504,29 +1572,27 @@
 !         !$OMP parallel private(IJ,JJ4)
 !         !$OMP do reduction(+ : TAXYZP,TNLAPU,TNLAPV,TNLAPW)
           DO IJ=1,IAN
-            DO JTT=1,IAT
             JJ4=IE(IJ,J1)
             TAXYZP=TAXYZP+((DJJ(1,1)*AX(I1,IJ)+DJJ(1,2)*AY(I1,IJ)+DJJ(1,3)*AZ(I1,IJ)+DJJ(1,4)*BX(I1,IJ)+DJJ(1,5)*BY(I1,IJ)+DJJ(1,6)*BZ(I1,IJ)+&
                  DJJ(1,7)*CXY(I1,IJ)+DJJ(1,8)*CYZ(I1,IJ)+DJJ(1,9)*CZX(I1,IJ))*XL(I1,J1)+(DJJ(2,1)*AX(I1,IJ)+DJJ(2,2)*AY(I1,IJ)+DJJ(2,3)*AZ(I1,IJ)+&
                  DJJ(2,4)*BX(I1,IJ)+DJJ(2,5)*BY(I1,IJ)+DJJ(2,6)*BZ(I1,IJ)+DJJ(2,7)*CXY(I1,IJ)+DJJ(2,8)*CYZ(I1,IJ)+DJJ(2,9)*CZX(I1,IJ))*XM(I1,J1)+&
                  (DJJ(3,1)*AX(I1,IJ)+DJJ(3,2)*AY(I1,IJ)+DJJ(3,3)*AZ(I1,IJ)+DJJ(3,4)*BX(I1,IJ)+DJJ(3,5)*BY(I1,IJ)+DJJ(3,6)*BZ(I1,IJ)+&
-                 DJJ(3,7)*CXY(I1,IJ)+DJJ(3,8)*CYZ(I1,IJ)+DJJ(3,9)*CZX(I1,IJ))*XN(I1,J1))*P(JTT,JJ4)
+                  DJJ(3,7)*CXY(I1,IJ)+DJJ(3,8)*CYZ(I1,IJ)+DJJ(3,9)*CZX(I1,IJ))*XN(I1,J1))*P(ITT,JJ4)
             TNLAPU=TNLAPU+(DJJ(4,1)*AX(I1,IJ)+DJJ(4,2)*AY(I1,IJ)+DJJ(4,3)*AZ(I1,IJ)+DJJ(4,4)*BX(I1,IJ)+DJJ(4,5)*BY(I1,IJ)+DJJ(4,6)*BZ(I1,IJ)+&
                  DJJ(4,7)*CXY(I1,IJ)+DJJ(4,8)*CYZ(I1,IJ)+DJJ(4,9)*CZX(I1,IJ)+DJJ(5,1)*AX(I1,IJ)+DJJ(5,2)*AY(I1,IJ)+DJJ(5,3)*AZ(I1,IJ)+&
                  DJJ(5,4)*BX(I1,IJ)+DJJ(5,5)*BY(I1,IJ)+DJJ(5,6)*BZ(I1,IJ)+DJJ(5,7)*CXY(I1,IJ)+DJJ(5,8)*CYZ(I1,IJ)+DJJ(5,9)*CZX(I1,IJ)+&
                  DJJ(6,1)*AX(I1,IJ)+DJJ(6,2)*AY(I1,IJ)+DJJ(6,3)*AZ(I1,IJ)+DJJ(6,4)*BX(I1,IJ)+DJJ(6,5)*BY(I1,IJ)+DJJ(6,6)*BZ(I1,IJ)+&
-                 DJJ(6,7)*CXY(I1,IJ)+DJJ(6,8)*CYZ(I1,IJ)+DJJ(6,9)*CZX(I1,IJ))*U(JTT,JJ4)
+                  DJJ(6,7)*CXY(I1,IJ)+DJJ(6,8)*CYZ(I1,IJ)+DJJ(6,9)*CZX(I1,IJ))*U(ITT,JJ4)
             TNLAPV=TNLAPV+(DJJ(4,1)*AX(I1,IJ)+DJJ(4,2)*AY(I1,IJ)+DJJ(4,3)*AZ(I1,IJ)+DJJ(4,4)*BX(I1,IJ)+DJJ(4,5)*BY(I1,IJ)+DJJ(4,6)*BZ(I1,IJ)+&
                  DJJ(4,7)*CXY(I1,IJ)+DJJ(4,8)*CYZ(I1,IJ)+DJJ(4,9)*CZX(I1,IJ)+DJJ(5,1)*AX(I1,IJ)+DJJ(5,2)*AY(I1,IJ)+DJJ(5,3)*AZ(I1,IJ)+&
                  DJJ(5,4)*BX(I1,IJ)+DJJ(5,5)*BY(I1,IJ)+DJJ(5,6)*BZ(I1,IJ)+DJJ(5,7)*CXY(I1,IJ)+DJJ(5,8)*CYZ(I1,IJ)+DJJ(5,9)*CZX(I1,IJ)+&
                  DJJ(6,1)*AX(I1,IJ)+DJJ(6,2)*AY(I1,IJ)+DJJ(6,3)*AZ(I1,IJ)+DJJ(6,4)*BX(I1,IJ)+DJJ(6,5)*BY(I1,IJ)+DJJ(6,6)*BZ(I1,IJ)+&
-                 DJJ(6,7)*CXY(I1,IJ)+DJJ(6,8)*CYZ(I1,IJ)+DJJ(6,9)*CZX(I1,IJ))*V(JTT,JJ4)
+                  DJJ(6,7)*CXY(I1,IJ)+DJJ(6,8)*CYZ(I1,IJ)+DJJ(6,9)*CZX(I1,IJ))*V(ITT,JJ4)
             TNLAPW=TNLAPW+(DJJ(4,1)*AX(I1,IJ)+DJJ(4,2)*AY(I1,IJ)+DJJ(4,3)*AZ(I1,IJ)+DJJ(4,4)*BX(I1,IJ)+DJJ(4,5)*BY(I1,IJ)+DJJ(4,6)*BZ(I1,IJ)+&
                  DJJ(4,7)*CXY(I1,IJ)+DJJ(4,8)*CYZ(I1,IJ)+DJJ(4,9)*CZX(I1,IJ)+DJJ(5,1)*AX(I1,IJ)+DJJ(5,2)*AY(I1,IJ)+DJJ(5,3)*AZ(I1,IJ)+&
                  DJJ(5,4)*BX(I1,IJ)+DJJ(5,5)*BY(I1,IJ)+DJJ(5,6)*BZ(I1,IJ)+DJJ(5,7)*CXY(I1,IJ)+DJJ(5,8)*CYZ(I1,IJ)+DJJ(5,9)*CZX(I1,IJ)+&
                  DJJ(6,1)*AX(I1,IJ)+DJJ(6,2)*AY(I1,IJ)+DJJ(6,3)*AZ(I1,IJ)+DJJ(6,4)*BX(I1,IJ)+DJJ(6,5)*BY(I1,IJ)+DJJ(6,6)*BZ(I1,IJ)+&
-                 DJJ(6,7)*CXY(I1,IJ)+DJJ(6,8)*CYZ(I1,IJ)+DJJ(6,9)*CZX(I1,IJ))*W(JTT,JJ4)
-            END DO
+                  DJJ(6,7)*CXY(I1,IJ)+DJJ(6,8)*CYZ(I1,IJ)+DJJ(6,9)*CZX(I1,IJ))*W(ITT,JJ4)
           END DO
 !         !$OMP end do
 !         !$OMP end parallel
@@ -1537,28 +1603,28 @@
 !         !$OMP parallel private(IJ,JJ4)
 !         !$OMP do reduction(+ : TDXP,TDYP,TDZP)
           DO IJ=1,IAN
-            DO JTT=1,IAT
             JJ4=IE(IJ,J1)
             TDXP=TDXP+(DJJ(1,1)*AX(I1,IJ)+DJJ(1,2)*AY(I1,IJ)+DJJ(1,3)*AZ(I1,IJ)+DJJ(1,4)*BX(I1,IJ)+DJJ(1,5)*BY(I1,IJ)+DJJ(1,6)*BZ(I1,IJ)+&
-                 DJJ(1,7)*CXY(I1,IJ)+DJJ(1,8)*CYZ(I1,IJ)+DJJ(1,9)*CZX(I1,IJ))*P(JTT,JJ4)
+                  DJJ(1,7)*CXY(I1,IJ)+DJJ(1,8)*CYZ(I1,IJ)+DJJ(1,9)*CZX(I1,IJ))*P(ITT,JJ4)
             TDYP=TDYP+(DJJ(2,1)*AX(I1,IJ)+DJJ(2,2)*AY(I1,IJ)+DJJ(2,3)*AZ(I1,IJ)+DJJ(2,4)*BX(I1,IJ)+DJJ(2,5)*BY(I1,IJ)+DJJ(2,6)*BZ(I1,IJ)+&
-                 DJJ(2,7)*CXY(I1,IJ)+DJJ(2,8)*CYZ(I1,IJ)+DJJ(2,9)*CZX(I1,IJ))*P(JTT,JJ4)
+                  DJJ(2,7)*CXY(I1,IJ)+DJJ(2,8)*CYZ(I1,IJ)+DJJ(2,9)*CZX(I1,IJ))*P(ITT,JJ4)
             TDZP=TDZP+(DJJ(3,1)*AX(I1,IJ)+DJJ(3,2)*AY(I1,IJ)+DJJ(3,3)*AZ(I1,IJ)+DJJ(3,4)*BX(I1,IJ)+DJJ(3,5)*BY(I1,IJ)+DJJ(3,6)*BZ(I1,IJ)+&
-                 DJJ(3,7)*CXY(I1,IJ)+DJJ(3,8)*CYZ(I1,IJ)+DJJ(3,9)*CZX(I1,IJ))*P(JTT,JJ4)
-            END DO
+                  DJJ(3,7)*CXY(I1,IJ)+DJJ(3,8)*CYZ(I1,IJ)+DJJ(3,9)*CZX(I1,IJ))*P(ITT,JJ4)
           END DO
 !         !$OMP end do
 !         !$OMP end parallel
           IF(JJ.EQ.1786.AND.ITT.EQ.1) THEN
-            OPEN(97,FILE='results\pressure_wall_node1786_debug.dat',STATUS='UNKNOWN',POSITION='APPEND')
+            OPEN(97,FILE='results/pressure_wall_node1786_debug.dat',STATUS='UNKNOWN',POSITION='APPEND')
             WRITE(97,'(A)') '# node j1 i1 time x y z p nx ny nz dpdx dpdy dpdz wall_normal_momentum'
             WRITE(97,'(4I10,1P,11E24.14)') JJ,J1,I1,ITT,XX(JJ),YY(JJ),ZZ(JJ),P(ITT,JJ),XL(I1,J1),XM(I1,J1),XN(I1,J1),TDXP,TDYP,TDZP,TAXYZP
             CLOSE(97)
             WRITE(*,*)'DEBUG_P_WALL_1786 J1/I1/XYZ/P=',J1,I1,XX(JJ),YY(JJ),ZZ(JJ),P(ITT,JJ)
             WRITE(*,*)'DEBUG_P_WALL_1786 NORMAL/DP/NM=',XL(I1,J1),XM(I1,J1),XN(I1,J1),TDXP,TDYP,TDZP,TAXYZP
           END IF
+          IF(IS_REPLACED_ROW(ISP1).EQ.0) FFS(ISP1)=0.0D0
+          FFS(ISP1)=FFS(ISP1)+TAXYZP
           IS_REPLACED_ROW(ISP1)=1
-          FFS_REPLACED_ROW(ISP1)=TAXYZP
+          FFS_REPLACED_ROW(ISP1)=FFS_REPLACED_ROW(ISP1)+TAXYZP
           END DO
           END IF      
         END DO
@@ -1616,7 +1682,7 @@
       DO I3=1,NSB2
         II=NSBUI(I3)
         DO ITT=1,IAT
-          IROW=GLOBAL_EQUATION_INDEX(ITT,II,4,NX,IAT)
+          IROW=GLOBAL_EQUATION_INDEX(ITT,II,1,NX,IAT)
           IF(IS_REPLACED_ROW(IROW).NE.0) THEN
             DROW_DOT=0.0D0
             DO I=1,SPARSE_PRESSURE_WALL_A%nnz
@@ -1649,8 +1715,8 @@
         END DO
       END DO
       DINLET_P_RES_L2=DSQRT(DINLET_P_RES_L2)
-      WRITE(*,*)'INLET_PRESSURE_D2_ROW_FULL_RES COUNT/MAX/SUM/L2=',NINLET_P_RES,DINLET_P_RES_MAX,DINLET_P_RES_SUM,DINLET_P_RES_L2
-      IF(IINLET_P_RES_MAX.GT.0) WRITE(*,*)'INLET_PRESSURE_D2_ROW_FULL_MAX ROW/NODE/TIME/XYZ/DOT=',IINLET_P_RES_MAX,IINLET_P_RES_NODE,IINLET_P_RES_TIME,XX(IINLET_P_RES_NODE),YY(IINLET_P_RES_NODE),ZZ(IINLET_P_RES_NODE),DINLET_P_RES_DOT
+      WRITE(*,*)'INLET_PRESSURE_EXTRAP_ROW_FULL_RES COUNT/MAX/SUM/L2=',NINLET_P_RES,DINLET_P_RES_MAX,DINLET_P_RES_SUM,DINLET_P_RES_L2
+      IF(IINLET_P_RES_MAX.GT.0) WRITE(*,*)'INLET_PRESSURE_EXTRAP_ROW_FULL_MAX ROW/NODE/TIME/XYZ/DOT=',IINLET_P_RES_MAX,IINLET_P_RES_NODE,IINLET_P_RES_TIME,XX(IINLET_P_RES_NODE),YY(IINLET_P_RES_NODE),ZZ(IINLET_P_RES_NODE),DINLET_P_RES_DOT
 
 !     --------------  BUILD DIRICHLET CONSTRAINT LIST -----------------
 
@@ -1701,7 +1767,8 @@
         DO ITT=1,IAT
           II=NSBUO(I3)
           ISP2=GLOBAL_DOF_INDEX(ITT,II,BLOCK_P,NX,IAT)
-          ISP1=GLOBAL_EQUATION_INDEX(ITT,II,4,NX,IAT)
+!         Use the pressure/continuity row, keeping outlet U-gradient row 4.
+          ISP1=GLOBAL_EQUATION_INDEX(ITT,II,1,NX,IAT)
          BCVAL=SBPO(I3)-P(ITT,II)
           IF(IS_CONSTRAINED(ISP2).EQ.0) NCONSTRAINT=NCONSTRAINT+1
           IF(IS_CONSTRAINED(ISP2).NE.0.AND.(BC_ROW(ISP2).NE.ISP1.OR.DABS(BC_DELTA(ISP2)-BCVAL).GT.1.0D-10)) NCONFLICT=NCONFLICT+1
@@ -1754,8 +1821,83 @@
         WRITE(*,*)'INLET VELOCITY DIRICHLET BC SKIPPED; USING STEADY STOKES INITIAL FIELD'
       END IF
 
+!     Initial conditions at the left endpoint of the temporal element.
+!     Rows U/V/W/P replace the corresponding equations at ITT=1.  Pressure
+!     uses the continuity row, which would be empty after eliminating all
+!     prescribed left-end velocity columns.  Existing spatial Dirichlet rows
+!     are retained.
+      NTIME_LEFT_CONSTRAINT=0
+      DO II=1,NX
+        ISP2=GLOBAL_DOF_INDEX(1,II,BLOCK_U,NX,IAT)
+        IF(IS_CONSTRAINED(ISP2).EQ.0) THEN
+          ISP1=GLOBAL_EQUATION_INDEX(1,II,4,NX,IAT)
+          BCVAL=U_TIME_LEFT(II)-U(1,II)
+          NCONSTRAINT=NCONSTRAINT+1
+          NTIME_LEFT_CONSTRAINT=NTIME_LEFT_CONSTRAINT+1
+          IS_CONSTRAINED(ISP2)=1
+          BC_ROW(ISP2)=ISP1
+          IS_CONSTRAINED_ROW(ISP1)=1
+          BC_DELTA(ISP2)=BCVAL
+          IS_REPLACED_ROW(ISP1)=0
+          FFS_REPLACED_ROW(ISP1)=0.0D0
+        END IF
+
+        ISP2=GLOBAL_DOF_INDEX(1,II,BLOCK_V,NX,IAT)
+        IF(IS_CONSTRAINED(ISP2).EQ.0) THEN
+          ISP1=GLOBAL_EQUATION_INDEX(1,II,2,NX,IAT)
+          BCVAL=V_TIME_LEFT(II)-V(1,II)
+          NCONSTRAINT=NCONSTRAINT+1
+          NTIME_LEFT_CONSTRAINT=NTIME_LEFT_CONSTRAINT+1
+          IS_CONSTRAINED(ISP2)=1
+          BC_ROW(ISP2)=ISP1
+          IS_CONSTRAINED_ROW(ISP1)=1
+          BC_DELTA(ISP2)=BCVAL
+          IS_REPLACED_ROW(ISP1)=0
+          FFS_REPLACED_ROW(ISP1)=0.0D0
+        END IF
+
+        ISP2=GLOBAL_DOF_INDEX(1,II,BLOCK_W,NX,IAT)
+        IF(IS_CONSTRAINED(ISP2).EQ.0) THEN
+          ISP1=GLOBAL_EQUATION_INDEX(1,II,3,NX,IAT)
+          BCVAL=W_TIME_LEFT(II)-W(1,II)
+          NCONSTRAINT=NCONSTRAINT+1
+          NTIME_LEFT_CONSTRAINT=NTIME_LEFT_CONSTRAINT+1
+          IS_CONSTRAINED(ISP2)=1
+          BC_ROW(ISP2)=ISP1
+          IS_CONSTRAINED_ROW(ISP1)=1
+          BC_DELTA(ISP2)=BCVAL
+          IS_REPLACED_ROW(ISP1)=0
+          FFS_REPLACED_ROW(ISP1)=0.0D0
+        END IF
+
+        ISP2=GLOBAL_DOF_INDEX(1,II,BLOCK_P,NX,IAT)
+        IF(IS_CONSTRAINED(ISP2).EQ.0) THEN
+          ISP1=GLOBAL_EQUATION_INDEX(1,II,1,NX,IAT)
+          BCVAL=P_TIME_LEFT(II)-P(1,II)
+          NCONSTRAINT=NCONSTRAINT+1
+          NTIME_LEFT_CONSTRAINT=NTIME_LEFT_CONSTRAINT+1
+          IS_CONSTRAINED(ISP2)=1
+          BC_ROW(ISP2)=ISP1
+          IS_CONSTRAINED_ROW(ISP1)=1
+          BC_DELTA(ISP2)=BCVAL
+          IS_REPLACED_ROW(ISP1)=0
+          FFS_REPLACED_ROW(ISP1)=0.0D0
+        END IF
+      END DO
+      WRITE(*,*)'TIME_LEFT_UVWP_CONSTRAINTS=',NTIME_LEFT_CONSTRAINT
+
       WRITE(*,*)'DIRICHLET DOF COUNT, CONFLICTS=',NCONSTRAINT,NCONFLICT
       WRITE(*,*)'P_OUT_DIRICHLET DOF COUNT=',NPOUT_CONSTRAINT
+      IF(NCONFLICT.NE.0) ERROR STOP 'CONFLICTING_DIRICHLET_VALUES'
+      IPIV=0
+      DO ISP2=1,N
+        IF(IS_CONSTRAINED(ISP2).EQ.0) CYCLE
+        IROW=BC_ROW(ISP2)
+        IF(IPIV(IROW).NE.0.AND.IPIV(IROW).NE.ISP2) ERROR STOP 'DIRICHLET_ROW_COLLISION'
+        IPIV(IROW)=ISP2
+      END DO
+      IF(ANY((IS_REPLACED_ROW.NE.0).AND.(IS_CONSTRAINED_ROW.NE.0))) &
+        ERROR STOP 'BOUNDARY_EQUATION_OVERWRITTEN_BY_DIRICHLET'
       NREPLACED_CONSTRAINED=0
       NRC1=0
       NRC2=0
@@ -1807,7 +1949,7 @@
       DO ISP2=1,N
         IF(IS_CONSTRAINED(ISP2).NE.0) THEN
           IROW=BC_ROW(ISP2)
-          IF(IROW.GT.0) FFS_PHYS(IROW)=BC_DELTA(ISP2)
+          IF(IROW.GT.0) FFS_PHYS(IROW)=-BC_DELTA(ISP2)
         END IF
       END DO
 
@@ -2051,7 +2193,7 @@
 
 !     Raw equation consistency before Dirichlet column elimination.
 !     This is the correct place to check r = A*x - b for all assembled rows.
-      IF(IPK.LE.1) THEN
+      IF(.FALSE.) THEN  ! Disabled O(N*NNZ) raw matrix diagnostic
       DRAW_AX_DIFF_MAX=0.0D0
       DRAW_AX_DIFF_SUM=0.0D0
       DRAW_AX_DIFF_L2=0.0D0
@@ -2188,14 +2330,16 @@
       DO ISP2=1,N
         IF(IS_CONSTRAINED(ISP2).NE.0) THEN
           BCVAL=BC_DELTA(ISP2)
+!         J*d=-F, d_fixed=BCVAL: F_free += J_free,fixed*BCVAL.
+          IF(BCVAL.EQ.0.0D0) CYCLE
           DO I=1,SPARSE_ELEMENT_A%nnz
             IF(SPARSE_ELEMENT_A%col(I).EQ.ISP2.AND.IS_REPLACED_ROW(SPARSE_ELEMENT_A%row(I)).EQ.0.AND.IS_CONSTRAINED_ROW(SPARSE_ELEMENT_A%row(I)).EQ.0) THEN
-              FFS(SPARSE_ELEMENT_A%row(I))=FFS(SPARSE_ELEMENT_A%row(I))-SPARSE_ELEMENT_A%val(I)*BCVAL
+              FFS(SPARSE_ELEMENT_A%row(I))=FFS(SPARSE_ELEMENT_A%row(I))+SPARSE_ELEMENT_A%val(I)*BCVAL
             END IF
           END DO
           DO I=1,SPARSE_PRESSURE_WALL_A%nnz
             IF(SPARSE_PRESSURE_WALL_A%col(I).EQ.ISP2) THEN
-              FFS_REPLACED_ROW(SPARSE_PRESSURE_WALL_A%row(I))=FFS_REPLACED_ROW(SPARSE_PRESSURE_WALL_A%row(I))-SPARSE_PRESSURE_WALL_A%val(I)*BCVAL
+              FFS_REPLACED_ROW(SPARSE_PRESSURE_WALL_A%row(I))=FFS_REPLACED_ROW(SPARSE_PRESSURE_WALL_A%row(I))+SPARSE_PRESSURE_WALL_A%val(I)*BCVAL
             END IF
           END DO
         END IF
@@ -2217,11 +2361,30 @@
         IF(IS_CONSTRAINED(ISP2).NE.0) THEN
           IROW=BC_ROW(ISP2)
           call triplet_add(SPARSE_A, IROW, ISP2, 1.0D0)
-          FFS(IROW)=BC_DELTA(ISP2)
+          FFS(IROW)=-BC_DELTA(ISP2)
         END IF
       END DO
       call triplet_to_csr(SPARSE_A, ir, ic, a, mn)
       mnr=n+1
+      NINTERFACE_ROWS=0
+      DO IROW=1,N
+        IF(ir(IROW).EQ.ir(IROW+1)) THEN
+          IBLOCK=(IROW-1)/(NX*IAT)+1
+          ILOCAL=IROW-(IBLOCK-1)*NX*IAT
+          IPNODE=(ILOCAL-1)/IAT+1
+          IPTIME=ILOCAL-(IPNODE-1)*IAT
+          WRITE(*,*)'EMPTY_ASSEMBLED_ROW ROW/BLOCK/NODE/TIME/IIT/FLAGS/XYZ=', &
+               IROW,IBLOCK,IPNODE,IPTIME,IIT(IROW),IS_REPLACED_ROW(IROW), &
+               IS_CONSTRAINED_ROW(IROW),XX(IPNODE),YY(IPNODE),ZZ(IPNODE)
+          ERROR STOP 'EMPTY_ASSEMBLED_EQUATION_ROW'
+        END IF
+        IF(IS_REPLACED_ROW(IROW).EQ.0.AND.IS_CONSTRAINED_ROW(IROW).EQ.0) THEN
+          IF(IIT(IROW).EQ.2) NINTERFACE_ROWS=NINTERFACE_ROWS+1
+          IF(IIT(IROW).LT.1.OR.IIT(IROW).GT.2) ERROR STOP 'INVALID_EQUATION_CONTRIBUTION_COUNT'
+        END IF
+      END DO
+      IF(NINTERFACE_ROWS.NE.4*(IAT-1)*(MX-1)*NAY*NAZ) ERROR STOP 'INTERFACE_EQUATIONS_MISSING'
+      WRITE(*,*)'INTERFACE_EQUATION_ROWS=',NINTERFACE_ROWS
       write(*,*)'direct csr !mnr,mn',mnr,mn
 
 !     Effective right hand side for final CSR diagnostics.  Most rows are
@@ -2263,6 +2426,7 @@
 !     the Ax-b consistency error.  Constrained rows are delta-equation rows
 !     and are not checked against the current state vector here.
 !     The Newton linear solve itself is checked later by NEWTON_PARDISO_REL_RESIDUAL.
+      IF(IFAST_PRODUCTION.EQ.0) THEN
       DALL_AX_DIFF_MAX=0.0D0
       DALL_AX_DIFF_SUM=0.0D0
       DALL_AX_DIFF_L2=0.0D0
@@ -2440,6 +2604,7 @@
       ELSE
         WRITE(*,*)'LINEAR_AXB_SUMMARY FAIL TOL/MAX_REPLACED/MAX_OUTFLOW=',DAXB_TOL,DALL_KIND_MAX1,DOUT_DIFF_MAX
       END IF
+      END IF
 
 !     --------------  FINITE-DIFFERENCE CHECK OF PRESSURE JACOBIAN COLUMN
       IF(IPRESSURE_FD_CHECK.NE.0.AND.IPRESSURE_FD_DONE.EQ.0) THEN
@@ -2480,7 +2645,7 @@
           WRITE(*,*)'PRESSURE FD JACOBIAN CHECK START BLOCK/COL/NODE/TIME/EPS=',IPRESSURE_FD_TARGET_BLOCK,IPRESSURE_FD_COL,IPRESSURE_FD_NODE,IPRESSURE_FD_TIME,DPRESSURE_FD_EPS
           GO TO 30
         ELSE IF(IPRESSURE_FD_MODE.EQ.1) THEN
-          OPEN(98,FILE='results\pressure_jacobian_fd_check.dat',STATUS='REPLACE')
+          OPEN(98,FILE='results/pressure_jacobian_fd_check.dat',STATUS='REPLACE')
           WRITE(98,'(A)') '# row block node time analytic fd diff absdiff rhs_base rhs_pert'
           DMAX_FD=0.0D0
           DSUM_FD=0.0D0
@@ -2528,7 +2693,7 @@
           WRITE(*,*)'PRESSURE FD JACOBIAN CHECK DONE BLOCK/COL/NODE/TIME=',IPRESSURE_FD_TARGET_BLOCK,IPRESSURE_FD_COL,IPRESSURE_FD_NODE,IPRESSURE_FD_TIME
           WRITE(*,*)'PRESSURE FD MAX ABS DIFF ROW/BLOCK/NODE/TIME=',IMAX_FD,IBLOCK,IPNODE,IPTIME
           WRITE(*,*)'PRESSURE FD MAX_ABS_DIFF SUM_ABS_DIFF MAX_REL_DIFF=',DMAX_FD,DSUM_FD,DMAX_FD_REL
-          WRITE(*,*)'PRESSURE FD DETAILS FILE=results\pressure_jacobian_fd_check.dat'
+          WRITE(*,*)'PRESSURE FD DETAILS FILE=results/pressure_jacobian_fd_check.dat'
           IF(IPRESSURE_FD_TARGET_BLOCK.EQ.1) THEN
             U(IPRESSURE_FD_TIME,IPRESSURE_FD_NODE)=DPRESSURE_FD_OLD
           ELSE IF(IPRESSURE_FD_TARGET_BLOCK.EQ.2) THEN
@@ -2693,12 +2858,14 @@
 !     !$OMP end do
 !     !$OMP end parallel
       WW4=DSQRT(WW4_SUM)
+      WW4_RMS=WW4/DSQRT(DBLE(4*NX*IAT))
       WW4_LINEAR_RHS=DSQRT(WW4_RHS_SUM)
       
       WRITE(*,*)'WW4-',WW4
       WRITE(*,*)'WW4_SUM=',WW4_SUM
       WRITE(*,*)'WW4_NORM=',WW4
       WRITE(*,*)'WW4_PHYS_NORM=',WW4
+      WRITE(*,*)'WW4_PHYS_RMS=',WW4_RMS
       WRITE(*,*)'WW4_LINEAR_RHS_NORM=',WW4_LINEAR_RHS
       DRU=0.0D0
       DRV=0.0D0
@@ -2807,6 +2974,12 @@
       END IF
 
       IF(IPENDING_STEP.NE.0) THEN
+!       A restored best candidate must have its own freshly assembled residual.
+        IF(IBEST_REEVAL.NE.0) THEN
+          IBEST_REEVAL=0
+          WRITE(*,*)'MARQUARDT BEST CANDIDATE RESIDUAL REEVALUATED WW4=',WW4
+          GOTO 7788
+        END IF
         IF(ILINESEARCH_EXTRA_MODE.EQ.11) THEN
           DO IBLOCK=1,4
             DS_OLD=0.0D0
@@ -3049,116 +3222,11 @@
         END IF
         DWW4_DROP=WW4_PREV-WW4
         DWW4_REL_DROP=DWW4_DROP/DMAX1(1.0D-30,DABS(WW4_PREV))
-        IF(Re.GE.1.0D5.AND.IMARQUARDT_CG.NE.0.AND.ILINESEARCH_TRIES.EQ.0.AND.ILINESEARCH_EXTRA_MODE.EQ.0) THEN
-          IF(ILAMBDA_SCAN_ACTIVE.NE.0) THEN
-            IF(WW4.LT.WW4_LAMBDA_BEST) THEN
-              WW4_LAMBDA_BEST=WW4
-              DLM_LAMBDA_SCAN_BEST=DLM_LAMBDA_USED
-              DO I=1,NX
-              DO ITT=1,IAT
-                U_LSCAN_BEST(ITT,I)=U(ITT,I)
-                V_LSCAN_BEST(ITT,I)=V(ITT,I)
-                W_LSCAN_BEST(ITT,I)=W(ITT,I)
-                P_LSCAN_BEST(ITT,I)=P(ITT,I)
-              END DO
-              END DO
-              DO I=1,N
-                DDUVWP_LSCAN_BEST(I)=DDUVWP(I)
-              END DO
-            END IF
-            WRITE(*,*)'LAMBDA_SCAN CANDIDATE STAGE/LAMBDA/WW4/BEST=',ILAMBDA_SCAN_STAGE,DLM_LAMBDA_USED,WW4,WW4_LAMBDA_BEST
-            IF(ILAMBDA_SCAN_STAGE.LT.ILAMBDA_SCAN_COUNT) THEN
-              ILAMBDA_SCAN_STAGE=ILAMBDA_SCAN_STAGE+1
-              DO I=1,NX
-              DO ITT=1,IAT
-                U(ITT,I)=U_SAVE(ITT,I)
-                V(ITT,I)=V_SAVE(ITT,I)
-                W(ITT,I)=W_SAVE(ITT,I)
-                P(ITT,I)=P_SAVE(ITT,I)
-              END DO
-              END DO
-              IF(ILAMBDA_SCAN_STAGE.EQ.2) THEN
-                DLM_LAMBDA_CURRENT=DLM_LAMBDA_SCAN_CAND2
-              ELSE
-                DLM_LAMBDA_CURRENT=DLM_LAMBDA_SCAN_CAND3
-              END IF
-              IPENDING_STEP=0
-              ILINESEARCH_TRIES=0
-              ILINESEARCH_ACCEPTED=0
-              ILINESEARCH_EXTRA_MODE=0
-              WRITE(*,*)'LAMBDA_SCAN NEXT STAGE/LAMBDA=',ILAMBDA_SCAN_STAGE,DLM_LAMBDA_CURRENT
-              GOTO 30
-            ELSE
-              DO I=1,NX
-              DO ITT=1,IAT
-                U(ITT,I)=U_LSCAN_BEST(ITT,I)
-                V(ITT,I)=V_LSCAN_BEST(ITT,I)
-                W(ITT,I)=W_LSCAN_BEST(ITT,I)
-                P(ITT,I)=P_LSCAN_BEST(ITT,I)
-              END DO
-              END DO
-              DO I=1,N
-                DDUVWP(I)=DDUVWP_LSCAN_BEST(I)
-              END DO
-              WW4=WW4_LAMBDA_BEST
-              DLM_LAMBDA_CURRENT=DLM_LAMBDA_SCAN_BEST
-              DLM_LAMBDA_USED=DLM_LAMBDA_SCAN_BEST
-              ILAMBDA_SCAN_ACTIVE=0
-              ILAMBDA_SCAN_STAGE=0
-              DWW4_DROP=WW4_PREV-WW4
-              DWW4_REL_DROP=DWW4_DROP/DMAX1(1.0D-30,DABS(WW4_PREV))
-              WRITE(*,*)'LAMBDA_SCAN ACCEPT BEST LAMBDA/WW4/REL_DROP=',DLM_LAMBDA_CURRENT,WW4,DWW4_REL_DROP
-            END IF
-          ELSE IF(DWW4_DROP.GT.0.0D0.AND.DWW4_REL_DROP.LT.3.0D-3) THEN
-            ILAMBDA_SCAN_ACTIVE=1
-            ILAMBDA_SCAN_STAGE=1
-            ILAMBDA_SCAN_COUNT=3
-            WW4_LAMBDA_BEST=WW4
-            DLM_LAMBDA_SCAN_CAND1=DMAX1(DLM_LAMBDA_MIN,DLM_LAMBDA_USED)
-            DLM_LAMBDA_SCAN_CAND2=DMIN1(DLM_LAMBDA_MAX,DMAX1(DLM_LAMBDA_MIN,10.0D0*DLM_LAMBDA_SCAN_CAND1))
-            DLM_LAMBDA_SCAN_CAND3=DMIN1(DLM_LAMBDA_MAX,DMAX1(DLM_LAMBDA_MIN,0.1D0*DLM_LAMBDA_SCAN_CAND1))
-            DLM_LAMBDA_SCAN_BEST=DLM_LAMBDA_SCAN_CAND1
-            DO I=1,NX
-            DO ITT=1,IAT
-              U_LSCAN_BEST(ITT,I)=U(ITT,I)
-              V_LSCAN_BEST(ITT,I)=V(ITT,I)
-              W_LSCAN_BEST(ITT,I)=W(ITT,I)
-              P_LSCAN_BEST(ITT,I)=P(ITT,I)
-              U(ITT,I)=U_SAVE(ITT,I)
-              V(ITT,I)=V_SAVE(ITT,I)
-              W(ITT,I)=W_SAVE(ITT,I)
-              P(ITT,I)=P_SAVE(ITT,I)
-            END DO
-            END DO
-            DO I=1,N
-              DDUVWP_LSCAN_BEST(I)=DDUVWP(I)
-            END DO
-            DLM_LAMBDA_CURRENT=DLM_LAMBDA_SCAN_CAND2
-            ILAMBDA_SCAN_STAGE=2
-            IPENDING_STEP=0
-            ILINESEARCH_TRIES=0
-            ILINESEARCH_ACCEPTED=0
-            ILINESEARCH_EXTRA_MODE=0
-            WRITE(*,*)'LAMBDA_SCAN START REL_DROP/CAND1/CAND2/CAND3=',DWW4_REL_DROP,DLM_LAMBDA_SCAN_CAND1,DLM_LAMBDA_SCAN_CAND2,DLM_LAMBDA_SCAN_CAND3
-            WRITE(*,*)'LAMBDA_SCAN NEXT STAGE/LAMBDA=',2,DLM_LAMBDA_CURRENT
-            GOTO 30
-          END IF
-        END IF
-        IF(DWW4_DROP.GT.0.0D0) THEN
-          IGN_DECREASE_COUNT=IGN_DECREASE_COUNT+1
-        ELSE
-          IGN_DECREASE_COUNT=0
-          IF(IGN_ACTIVE.NE.0) THEN
-            DGN_LAMBDA_SWITCH=DMAX1(1.0D-12,DGN_LAMBDA_SWITCH/10.0D0)
-            WRITE(*,*)'GAUSS_NEWTON_TRIAL FAILED LOWER_SWITCH=',DGN_LAMBDA_SWITCH
-          END IF
-        END IF
         DLM_LAMBDA_OLD=DLM_LAMBDA_CURRENT
         ISALS_EVAL=0
-!       Lambda is controlled by the measured nonlinear residual drop only:
-!       DWW4_DROP = WW4_PREV - WW4.  The SALS ratio below is kept as a
-!       diagnostic of the linearized model, but it does not choose lambda.
-!       Backtracking and block trials must not change lambda.
+!       Lambda is controlled by the SALS/Marquardt ratio
+!       r = (S_old - S_new) / pred_drop.  Backtracking and block trials
+!       must not change lambda; they only select an acceptable step.
         IF(ILINESEARCH_TRIES.EQ.0.AND.ILINESEARCH_EXTRA_MODE.EQ.0) THEN
         ISALS_EVAL=1
         DS_OLD=0.0D0
@@ -3174,8 +3242,9 @@
         DLM_TRACE=0.0D0
         DLM_TRACE_INV=0.0D0
         DO I=1,N
-!         DAXI gives R*J*d for diagnostics.  The SALS ratio itself uses
-!         d^T*(J^T*R^T*R*f)-lambda*d^T*D*d below.
+!         DAXI gives R*J*d for diagnostics.  Since NORMAL_RHS=-J^T*R^T*R*f
+!         and SALS_RHS=J^T*R^T*R*f, the predicted reduction is
+!         -d^T*SALS_RHS + lambda*d^T*D*d.
           DAXI=STEP_SIGN*(CG_AP(I)+CG_R(I)+CG_Z(I))
           DZ_SALS=0.0D0
           IF(COL_SCALE(I).GT.0.0D0) DZ_SALS=STEP_SIGN*DDUVWP(I)/COL_SCALE(I)
@@ -3196,7 +3265,7 @@
           DLM_DAMP_QUAD=DLM_DAMP_QUAD+SALS_DIAG(I)*DZ_SALS*DZ_SALS
         END DO
         DLM_PRED_DROP_NORM=DPHYS_OLD-DPHYS_PRED
-        DLM_PRED_DROP=DLM_GRAD_DROP-DLM_LAMBDA_OLD*DLM_DAMP_QUAD
+        DLM_PRED_DROP=-DLM_GRAD_DROP+DLM_LAMBDA_OLD*DLM_DAMP_QUAD
         DLM_ACT_DROP=DS_OLD-DS_NEW
         IF(DABS(DLM_PRED_DROP).GT.1.0D-300) THEN
           DLAMBDA_RATIO=DLM_ACT_DROP/DLM_PRED_DROP
@@ -3204,60 +3273,42 @@
           DLAMBDA_RATIO=-50.0D0
           WRITE(*,*)'MARQUARDT RATIO INVALID PRED_DROP_ZERO ACT_DROP=',DLM_PRED_DROP,DLM_ACT_DROP
         END IF
-        DTRUST_TARGET=1.0D-4
-        DTRUST_LOW=1.0D-5
-        DTRUST_HIGH=1.0D-3
         DLAMBDA_TRUST_FACTOR=1.0D0
         ILAMBDA_REASON=12
         DLM_LAMBDA_C=1.0D0/DMAX1(DLM_TRACE_INV,1.0D-300)
-        IF(DWW4_DROP.GT.0.0D0) THEN
-          IF(Re.GE.1.0D5.AND.DWW4_REL_DROP.LT.1.0D-4) THEN
-            DLAMBDA_TRUST_FACTOR=1.0D0
-            ILAMBDA_REASON=34
-          ELSE
-            DLAMBDA_TRUST_FACTOR=1.0D0/1.2D0
-            DLM_LAMBDA_CURRENT=DLM_LAMBDA_CURRENT*DLAMBDA_TRUST_FACTOR
-            ILAMBDA_REASON=31
-          END IF
+        IF(DLAMBDA_RATIO.GT.0.75D0) THEN
+          DLAMBDA_TRUST_FACTOR=0.5D0
+          DLM_LAMBDA_CURRENT=0.5D0*DLM_LAMBDA_CURRENT
+          ILAMBDA_REASON=41
+        ELSE IF(DLAMBDA_RATIO.GE.0.25D0) THEN
+          DLAMBDA_TRUST_FACTOR=1.0D0
+          ILAMBDA_REASON=42
         ELSE
-          DLAMBDA_TRUST_FACTOR=2.0D0
-          IF(DLM_LAMBDA_CURRENT.LE.0.0D0) DLM_LAMBDA_CURRENT=DMAX1(DLM_LAMBDA_C,1.0D0)
+          DLAMBDA_TRUST_FACTOR=DMAX1(2.0D0,DMIN1(2.0D0-DLAMBDA_RATIO,10.0D0))
+          IF(DLM_LAMBDA_CURRENT.LE.0.0D0) THEN
+            DLM_LAMBDA_CURRENT=DLM_LAMBDA_C
+            DLAMBDA_TRUST_FACTOR=0.5D0*DLAMBDA_TRUST_FACTOR
+          END IF
           DLM_LAMBDA_CURRENT=DLM_LAMBDA_CURRENT*DLAMBDA_TRUST_FACTOR
-          ILAMBDA_REASON=32
+          ILAMBDA_REASON=43
           DRELAX_START_SCALE=1.0D0
         END IF
+!       Apply the Gauss-Newton switch after the SALS update and bounds.
         DLM_LAMBDA_CURRENT=DMIN1(DLM_LAMBDA_MAX,DMAX1(DLM_LAMBDA_MIN,DLM_LAMBDA_CURRENT))
+        IF(DLM_LAMBDA_CURRENT.LE.1.0D-4) DLM_LAMBDA_CURRENT=0.0D0
         ELSE
           DLAMBDA_TRUST_FACTOR=1.0D0
           ILAMBDA_REASON=0
           WRITE(*,*)'MARQUARDT SALS SKIP LINESEARCH TRY/BLOCKMODE=',ILINESEARCH_TRIES,ILINESEARCH_EXTRA_MODE
         END IF
-        IF(.FALSE..AND.DWW4_REL_DROP.LT.1.0D-6.AND.DMAX1(RELAX_RETRY_U,RELAX_RETRY_VW,RELAX_RETRY_P).LT.1.0D-5.AND.ISTAG_ACCEPT_STEP.NE.IPK) THEN
-          ISTAG_LAMBDA_COUNT=ISTAG_LAMBDA_COUNT+1
-          ISTAG_ACCEPT_STEP=IPK
-          IF(ISTAG_LAMBDA_COUNT.LE.1) THEN
-            DLAMBDA_FACTOR=4.0D0
-          ELSE IF(ISTAG_LAMBDA_COUNT.EQ.2) THEN
-            DLAMBDA_FACTOR=10.0D0
-          ELSE
-            DLAMBDA_FACTOR=100.0D0
-          END IF
-          DLM_LAMBDA_CURRENT=DMIN1(DLM_LAMBDA_MAX,DMAX1(DLM_LAMBDA_MIN,DLAMBDA_FACTOR*DMAX1(DLM_LAMBDA_OLD,DLM_LAMBDA_CURRENT)))
-          DRELAX_START_SCALE=1.0D0
-          ILAMBDA_REASON=25
-          ISTAG_LAMBDA_HOLD=3
-          WRITE(*,*)'MARQUARDT STAGNATION_ACCEPT INCREASE_LAMBDA COUNT/FACTOR/REL_DROP/RELAX=',ISTAG_LAMBDA_COUNT,DLAMBDA_FACTOR,DWW4_REL_DROP,DMAX1(RELAX_RETRY_U,RELAX_RETRY_VW,RELAX_RETRY_P)
-        END IF
         IF(ISALS_EVAL.NE.0) THEN
           WRITE(*,*)'MARQUARDT SALS THEORY ACT/PRED/R/S_OLD/S_NEW/S_PRED=',DLM_ACT_DROP,DLM_PRED_DROP,DLAMBDA_RATIO,DS_OLD,DS_NEW,DS_PRED
           WRITE(*,*)'MARQUARDT SALS THEORY PHYS ACT/PRED/R/S_OLD/S_NEW/S_PRED=',DLM_ACT_DROP,DLM_PRED_DROP,DLAMBDA_RATIO,DPHYS_OLD,DPHYS_NEW,DPHYS_PRED
-          WRITE(*,*)'MARQUARDT SALS PRED_FORMULA JTRF-LAMBDA_DTD/JTRF/DTD=',DLM_PRED_DROP,DLM_GRAD_DROP,DLM_DAMP_QUAD
+          WRITE(*,*)'MARQUARDT SALS PRED_FORMULA -JTRF+LAMBDA_DTD/JTRF/DTD=',DLM_PRED_DROP,DLM_GRAD_DROP,DLM_DAMP_QUAD
           WRITE(*,*)'MARQUARDT LINEAR_MODEL_DIAG -2FTJD-JD2/NORMDIFF/FTJD/JD2=',-2.0D0*DLM_FDOTJD-DLM_JD_NORM2,DLM_PRED_DROP_NORM,DLM_FDOTJD,DLM_JD_NORM2
           WRITE(*,*)'MARQUARDT TRACE DIAG/INV_APPROX=',DLM_TRACE,DLM_TRACE_INV
           WRITE(*,*)'MARQUARDT LAMBDA_C_INV_TRACE_APPROX=',1.0D0/DMAX1(DLM_TRACE_INV,1.0D-300)
           WRITE(*,*)'MARQUARDT SALS_RATIO_DIAGNOSTIC/MEASURED_FACTOR=',DLAMBDA_RATIO,DLAMBDA_TRUST_FACTOR
-          WRITE(*,*)'MARQUARDT MEASURED_LAMBDA_CONTROL DROP/REL_DROP=',DWW4_DROP,DWW4_REL_DROP
-          WRITE(*,*)'GAUSS_NEWTON_TRIAL READINESS COUNT/LAMBDA/SWITCH=',IGN_DECREASE_COUNT,DLM_LAMBDA_CURRENT,DGN_LAMBDA_SWITCH
           WRITE(*,*)'MARQUARDT LAMBDA UPDATE OLD/NEW/REASON/REL_DROP=',DLM_LAMBDA_OLD,DLM_LAMBDA_CURRENT,ILAMBDA_REASON,DWW4_REL_DROP
         ELSE
           WRITE(*,*)'MARQUARDT LAMBDA KEEP DURING LINESEARCH OLD/NEW=',DLM_LAMBDA_OLD,DLM_LAMBDA_CURRENT
@@ -3265,8 +3316,6 @@
         DAXI=DMAX1(RELAX_RETRY_U,RELAX_RETRY_VW,RELAX_RETRY_P,1.0D-30)
         WRITE(*,*)'MARQUARDT_ACTUAL_DPHI STEP_SIGN/RELAX/DPHI_PER_REL/OLD/NEW=',STEP_SIGN,DAXI,(WW4*WW4-WW4_PREV*WW4_PREV)/DAXI,WW4_PREV,WW4
         IFAST_RESCUE=0
-        IF(.FALSE..AND.ISALS_EVAL.NE.0.AND.DLAMBDA_RATIO.LT.0.0D0) IFAST_RESCUE=1
-        IF(DWW4_DROP.GT.0.0D0.AND.DWW4_REL_DROP.LE.1.0D-6) IFAST_RESCUE=1
         IBLOCK_TRY_LIMIT=24
         IF(IFAST_RESCUE.NE.0) IBLOCK_TRY_LIMIT=4
         WRITE(*,*)'MARQUARDT EARLY_BLOCK_CANDIDATE FLAG/LIMIT/R/REL_RISE=',IFAST_RESCUE,IBLOCK_TRY_LIMIT,DLAMBDA_RATIO,(WW4-WW4_PREV)/DMAX1(1.0D-30,DABS(WW4_PREV))
@@ -3706,18 +3755,28 @@
             END DO
             END DO
             END DO
-            WW4=WW4_LINE_BEST
             ILINESEARCH_TRIES=IBEST_BACKTRACKS
-            WRITE(*,*)'MARQUARDT ACCEPT BEST CANDIDATE WW4_PREV/BEST/SIGN/TRY/RELAX_U/VW/P=',WW4_PREV,WW4,STEP_SIGN,ILINESEARCH_TRIES,RELAX_RETRY_U,RELAX_RETRY_VW,RELAX_RETRY_P
-            GOTO 7788
+            IBEST_REEVAL=1
+            IPENDING_STEP=1
+            WRITE(*,*)'MARQUARDT RESTORE BEST CANDIDATE FOR REEVALUATION=',WW4_LINE_BEST
+            GOTO 30
           END IF
           ITRUST_REJECT_COUNT=ITRUST_REJECT_COUNT+1
-          DLM_LAMBDA_CURRENT=DMIN1(DLM_LAMBDA_MAX,DMAX1(DLM_LAMBDA_MIN,10.0D0*DMAX1(DLM_LAMBDA_OLD,DLM_LAMBDA_CURRENT,1.0D0/DMAX1(DLM_TRACE_INV,1.0D-300))))
-          WRITE(*,*)'MARQUARDT TRUST REJECT STEP R/LAMBDA_OLD/LAMBDA_NEW=',DLAMBDA_RATIO,DLM_LAMBDA_OLD,DLM_LAMBDA_CURRENT
-          WRITE(*,*)'MARQUARDT TRUST REJECT COUNT WW4_PREV/WW4=',ITRUST_REJECT_COUNT,WW4_PREV,WW4
+          WRITE(*,*)'MARQUARDT STEP REJECT SALS LAMBDA UNCHANGED R/LAMBDA_OLD/LAMBDA_NEW=',DLAMBDA_RATIO,DLM_LAMBDA_OLD,DLM_LAMBDA_CURRENT
+          WRITE(*,*)'MARQUARDT STEP REJECT COUNT WW4_PREV/WW4=',ITRUST_REJECT_COUNT,WW4_PREV,WW4
+!         Never use a rejected trial point as the next linearization base.
+          DO I=1,NX
+          DO ITT=1,IAT
+            U(ITT,I)=U_SAVE(ITT,I)
+            V(ITT,I)=V_SAVE(ITT,I)
+            W(ITT,I)=W_SAVE(ITT,I)
+            P(ITT,I)=P_SAVE(ITT,I)
+          END DO
+          END DO
+          WW4=WW4_PREV
           IF(ITRUST_REJECT_COUNT.GE.30) THEN
-            WRITE(*,*)'MARQUARDT TRUST REJECT LIMIT REACHED. CHECK JTF SIGN OR J/F CONSISTENCY.'
-            STOP
+            WRITE(*,*)'MARQUARDT STEP REJECT LIMIT REACHED. CHECK JTF SIGN OR J/F CONSISTENCY.'
+            ERROR STOP 'MARQUARDT_NO_ACCEPTABLE_STEP'
           END IF
           IPENDING_STEP=0
           GOTO 30
@@ -3804,6 +3863,8 @@
         WRITE(*,*)'STEP_ERR1_WW4=',IPK,ERR1,WW4
         WRITE(*,*)'STEP_ERR1_ABS_REL_L2_REL_MAX=',IPK,ERR1_ABS,ERR1_REL_L2,ERR1_REL_MAX
         WRITE(*,*)'STEP_SUMMARY=',IPK,' LAMBDA_USED=',DLM_LAMBDA_USED,' LAMBDA_NEXT=',DLM_LAMBDA_CURRENT,' ERR1=',ERR1,' WW4=',WW4
+        WRITE(*,'(A,I6,5(A,ES24.16))') &
+             'STEP_OUT ',IPK,' LAMBDA=',DLM_LAMBDA_USED,' ERR1=',ERR1,' WW4=',WW4,' RELRES=',DLINEAR_REL,' R=',DLAMBDA_RATIO
         WRITE(*,*)'STEP_SUMMARY_BLOCK_NORM CONT/V/W/U=',IPK,DSQRT(DRU),DSQRT(DRV),DSQRT(DRW),DSQRT(DRP)
         WRITE(*,*)'STEP_SUMMARY_UVWP_MINMAX=',IPK,DUMIN,DUMAXV,DVMIN,DVMAXV,DWMIN,DWMAXV,DPMIN,DPMAXV
         IF(WW4.LE.1.0D-8) THEN
@@ -3950,15 +4011,6 @@
           END IF
           DWW4_DROP=WW4_PREV-WW4
           DWW4_REL_DROP=DWW4_DROP/DMAX1(1.0D-30,DABS(WW4_PREV))
-          IF(DWW4_DROP.GT.0.0D0) THEN
-            IGN_DECREASE_COUNT=IGN_DECREASE_COUNT+1
-          ELSE
-            IGN_DECREASE_COUNT=0
-            IF(IGN_ACTIVE.NE.0) THEN
-              DGN_LAMBDA_SWITCH=DMAX1(1.0D-12,DGN_LAMBDA_SWITCH/10.0D0)
-              WRITE(*,*)'GAUSS_NEWTON_TRIAL FAILED LOWER_SWITCH=',DGN_LAMBDA_SWITCH
-            END IF
-          END IF
           DLM_LAMBDA_OLD=DLM_LAMBDA_CURRENT
           DS_OLD=0.0D0
           DS_NEW=0.0D0
@@ -3997,46 +4049,11 @@
           END IF
           ILAMBDA_REASON=12
           DLM_LAMBDA_C=1.0D0/DMAX1(DLM_TRACE_INV,1.0D-300)
-          IF(DWW4_DROP.GT.0.0D0) THEN
-            IF(Re.GE.1.0D5.AND.DWW4_REL_DROP.LT.1.0D-4) THEN
-              DLAMBDA_FACTOR=1.0D0
-              ILAMBDA_REASON=34
-            ELSE
-              DLAMBDA_FACTOR=1.0D0/1.2D0
-              DLM_LAMBDA_CURRENT=DLM_LAMBDA_CURRENT*DLAMBDA_FACTOR
-              DLM_LAMBDA_CURRENT=DMIN1(DLM_LAMBDA_MAX,DMAX1(DLM_LAMBDA_MIN,DLM_LAMBDA_CURRENT))
-              ISTAG_LAMBDA_COUNT=0
-              ILAMBDA_REASON=31
-            END IF
-          ELSE
-            DLAMBDA_FACTOR=2.0D0
-            IF(DLM_LAMBDA_CURRENT.LE.0.0D0) DLM_LAMBDA_CURRENT=DMAX1(DLM_LAMBDA_C,1.0D0)
-            DLM_LAMBDA_CURRENT=DLM_LAMBDA_CURRENT*DLAMBDA_FACTOR
-            DLM_LAMBDA_CURRENT=DMIN1(DLM_LAMBDA_MAX,DMAX1(DLM_LAMBDA_MIN,DLM_LAMBDA_CURRENT))
-            DRELAX_START_SCALE=1.0D0
-            ILAMBDA_REASON=32
-          END IF
-          IF(.FALSE..AND.DWW4_REL_DROP.LT.1.0D-6.AND.ILINESEARCH_TRIES.GE.12.AND.ISTAG_ACCEPT_STEP.NE.IPK) THEN
-            ISTAG_LAMBDA_COUNT=ISTAG_LAMBDA_COUNT+1
-            ISTAG_ACCEPT_STEP=IPK
-            IF(ISTAG_LAMBDA_COUNT.LE.1) THEN
-              DLAMBDA_FACTOR=4.0D0
-            ELSE IF(ISTAG_LAMBDA_COUNT.EQ.2) THEN
-              DLAMBDA_FACTOR=10.0D0
-            ELSE
-              DLAMBDA_FACTOR=100.0D0
-            END IF
-            DLM_LAMBDA_CURRENT=DMIN1(DLM_LAMBDA_MAX,DMAX1(DLM_LAMBDA_MIN,DLAMBDA_FACTOR*DMAX1(DLM_LAMBDA_OLD,DLM_LAMBDA_CURRENT)))
-            DRELAX_START_SCALE=1.0D0
-            ILAMBDA_REASON=25
-            ISTAG_LAMBDA_HOLD=3
-            WRITE(*,*)'MARQUARDT STAGNATION_ACCEPT INCREASE_LAMBDA COUNT/FACTOR/REL_DROP/BACKTRACKS=',ISTAG_LAMBDA_COUNT,DLAMBDA_FACTOR,DWW4_REL_DROP,ILINESEARCH_TRIES
-          END IF
+          DLAMBDA_FACTOR=1.0D0
+          ILAMBDA_REASON=46
           WRITE(*,*)'MARQUARDT SALS_RATIO_DIAG ACT/PRED/R/S_OLD/S_NEW/S_PRED=',DLM_ACT_DROP,DLM_PRED_DROP,DLAMBDA_RATIO,DS_OLD,DS_NEW,DS_PRED
           WRITE(*,*)'MARQUARDT SALS_RATIO_DIAG_PHYS ACT/PRED/R/S_OLD/S_NEW/S_PRED=',DLM_ACT_DROP,DLM_PRED_DROP,DLAMBDA_RATIO,DPHYS_OLD,DPHYS_NEW,DPHYS_PRED
           WRITE(*,*)'MARQUARDT LINEAR_MODEL_DIAG PRED/NORMDIFF/FTJD/JDNORM2=',DLM_PRED_DROP,DLM_PRED_DROP_NORM,DLM_FDOTJD,DLM_JD_NORM2
-          WRITE(*,*)'MARQUARDT MEASURED_LAMBDA_CONTROL DROP/REL_DROP=',DWW4_DROP,DWW4_REL_DROP
-          WRITE(*,*)'GAUSS_NEWTON_TRIAL READINESS COUNT/LAMBDA/SWITCH=',IGN_DECREASE_COUNT,DLM_LAMBDA_CURRENT,DGN_LAMBDA_SWITCH
           WRITE(*,*)'MARQUARDT LAMBDA UPDATE OLD/NEW/REASON/REL_DROP/BACKTRACKS=',DLM_LAMBDA_OLD,DLM_LAMBDA_CURRENT,ILAMBDA_REASON,DWW4_REL_DROP,ILINESEARCH_TRIES
           WRITE(*,*)'MARQUARDT NEXT RELAX START SCALE=',DRELAX_START_SCALE
           IPENDING_STEP=0
@@ -4090,15 +4107,6 @@
             END IF
             DWW4_DROP=WW4_PREV-WW4
             DWW4_REL_DROP=DWW4_DROP/DMAX1(1.0D-30,DABS(WW4_PREV))
-            IF(DWW4_DROP.GT.0.0D0) THEN
-              IGN_DECREASE_COUNT=IGN_DECREASE_COUNT+1
-            ELSE
-              IGN_DECREASE_COUNT=0
-              IF(IGN_ACTIVE.NE.0) THEN
-                DGN_LAMBDA_SWITCH=DMAX1(1.0D-12,DGN_LAMBDA_SWITCH/10.0D0)
-                WRITE(*,*)'GAUSS_NEWTON_TRIAL FAILED LOWER_SWITCH=',DGN_LAMBDA_SWITCH
-              END IF
-            END IF
             DLM_LAMBDA_OLD=DLM_LAMBDA_CURRENT
             DS_OLD=0.0D0
             DS_NEW=0.0D0
@@ -4137,46 +4145,11 @@
             END IF
             ILAMBDA_REASON=12
             DLM_LAMBDA_C=1.0D0/DMAX1(DLM_TRACE_INV,1.0D-300)
-            IF(DWW4_DROP.GT.0.0D0) THEN
-              IF(Re.GE.1.0D5.AND.DWW4_REL_DROP.LT.1.0D-4) THEN
-                DLAMBDA_FACTOR=1.0D0
-                ILAMBDA_REASON=34
-              ELSE
-                DLAMBDA_FACTOR=1.0D0/1.2D0
-                DLM_LAMBDA_CURRENT=DLM_LAMBDA_CURRENT*DLAMBDA_FACTOR
-                DLM_LAMBDA_CURRENT=DMIN1(DLM_LAMBDA_MAX,DMAX1(DLM_LAMBDA_MIN,DLM_LAMBDA_CURRENT))
-                ISTAG_LAMBDA_COUNT=0
-                ILAMBDA_REASON=31
-              END IF
-            ELSE
-              DLAMBDA_FACTOR=2.0D0
-              IF(DLM_LAMBDA_CURRENT.LE.0.0D0) DLM_LAMBDA_CURRENT=DMAX1(DLM_LAMBDA_C,1.0D0)
-              DLM_LAMBDA_CURRENT=DLM_LAMBDA_CURRENT*DLAMBDA_FACTOR
-              DLM_LAMBDA_CURRENT=DMIN1(DLM_LAMBDA_MAX,DMAX1(DLM_LAMBDA_MIN,DLM_LAMBDA_CURRENT))
-              DRELAX_START_SCALE=1.0D0
-              ILAMBDA_REASON=32
-            END IF
-            IF(.FALSE..AND.DWW4_REL_DROP.LT.1.0D-6.AND.ILINESEARCH_TRIES.GE.12.AND.ISTAG_ACCEPT_STEP.NE.IPK) THEN
-              ISTAG_LAMBDA_COUNT=ISTAG_LAMBDA_COUNT+1
-              ISTAG_ACCEPT_STEP=IPK
-              IF(ISTAG_LAMBDA_COUNT.LE.1) THEN
-                DLAMBDA_FACTOR=4.0D0
-              ELSE IF(ISTAG_LAMBDA_COUNT.EQ.2) THEN
-                DLAMBDA_FACTOR=10.0D0
-              ELSE
-                DLAMBDA_FACTOR=100.0D0
-              END IF
-              DLM_LAMBDA_CURRENT=DMIN1(DLM_LAMBDA_MAX,DMAX1(DLM_LAMBDA_MIN,DLAMBDA_FACTOR*DMAX1(DLM_LAMBDA_OLD,DLM_LAMBDA_CURRENT)))
-              DRELAX_START_SCALE=1.0D0
-              ILAMBDA_REASON=25
-              ISTAG_LAMBDA_HOLD=3
-              WRITE(*,*)'MARQUARDT STAGNATION_ACCEPT INCREASE_LAMBDA COUNT/FACTOR/REL_DROP/BACKTRACKS=',ISTAG_LAMBDA_COUNT,DLAMBDA_FACTOR,DWW4_REL_DROP,ILINESEARCH_TRIES
-            END IF
+            DLAMBDA_FACTOR=1.0D0
+            ILAMBDA_REASON=46
             WRITE(*,*)'MARQUARDT SALS_RATIO_DIAG ACT/PRED/R/S_OLD/S_NEW/S_PRED=',DLM_ACT_DROP,DLM_PRED_DROP,DLAMBDA_RATIO,DS_OLD,DS_NEW,DS_PRED
             WRITE(*,*)'MARQUARDT SALS_RATIO_DIAG_PHYS ACT/PRED/R/S_OLD/S_NEW/S_PRED=',DLM_ACT_DROP,DLM_PRED_DROP,DLAMBDA_RATIO,DPHYS_OLD,DPHYS_NEW,DPHYS_PRED
             WRITE(*,*)'MARQUARDT LINEAR_MODEL_DIAG PRED/NORMDIFF/FTJD/JDNORM2=',DLM_PRED_DROP,DLM_PRED_DROP_NORM,DLM_FDOTJD,DLM_JD_NORM2
-            WRITE(*,*)'MARQUARDT MEASURED_LAMBDA_CONTROL DROP/REL_DROP=',DWW4_DROP,DWW4_REL_DROP
-            WRITE(*,*)'GAUSS_NEWTON_TRIAL READINESS COUNT/LAMBDA/SWITCH=',IGN_DECREASE_COUNT,DLM_LAMBDA_CURRENT,DGN_LAMBDA_SWITCH
             WRITE(*,*)'MARQUARDT LAMBDA UPDATE OLD/NEW/REASON/REL_DROP/BACKTRACKS=',DLM_LAMBDA_OLD,DLM_LAMBDA_CURRENT,ILAMBDA_REASON,DWW4_REL_DROP,ILINESEARCH_TRIES
             WRITE(*,*)'MARQUARDT NEXT RELAX START SCALE=',DRELAX_START_SCALE
             IPENDING_STEP=0
@@ -4238,20 +4211,9 @@
             END DO
             END DO
             DLM_LAMBDA_OLD=DLM_LAMBDA_CURRENT
-            DLM_TRACE=0.0D0
-            DO I=1,N
-              DLM_TRACE=DLM_TRACE+NORMAL_DIAG(I)
-            END DO
-            IF(DLM_LAMBDA_CURRENT.LE.0.0D0) THEN
-              DLM_LAMBDA_CURRENT=1.0D0/DMAX1(DLM_TRACE,1.0D-300)
-            ELSE
-              DLM_LAMBDA_CURRENT=10.0D0*DLM_LAMBDA_CURRENT
-            END IF
-            DLM_LAMBDA_CURRENT=DMIN1(DLM_LAMBDA_MAX,DMAX1(DLM_LAMBDA_MIN,DLM_LAMBDA_CURRENT))
             DRELAX_START_SCALE=1.0D0
             IPENDING_STEP=0
             ILINESEARCH_TRIES=0
-            WRITE(*,*)'MARQUARDT LAMBDA UPDATE OLD/NEW/REASON/REL_DROP/BACKTRACKS=',DLM_LAMBDA_OLD,DLM_LAMBDA_CURRENT,9,0.0D0,ILINESEARCH_TRIES
             WRITE(*,*)'MARQUARDT NEXT RELAX START SCALE=',DRELAX_START_SCALE
             GOTO 30
           END IF
@@ -4299,119 +4261,6 @@
         END IF
       END IF
 
-      GO TO 126
-
-      IZERO_ROW=0
-      IZERO_COL=0
-      ISMALL_DIAG=0
-      IP_ZERO_ROW=0
-      IP_ZERO_COL=0
-      IP_SMALL_DIAG=0
-      IU_ZERO_ROW=0
-      IV_ZERO_ROW=0
-      IW_ZERO_ROW=0
-      IU_SMALL_DIAG=0
-      IV_SMALL_DIAG=0
-      IW_SMALL_DIAG=0
-      DMINDIAG=1.0D300
-      DMAXDIAG=0.0D0
-      DMINROWSUM=1.0D300
-      DMINCOLSUM=1.0D300
-      DO I=1,4*NX*IAT
-        DROWSUM=0.0D0
-        DCOLSUM=0.0D0
-        DO J=1,4*NX*IAT
-          DROWSUM=DROWSUM+DABS(SSMMK(I,J))
-          DCOLSUM=DCOLSUM+DABS(SSMMK(J,I))
-        END DO
-        DMINDIAG=DMIN1(DMINDIAG,DABS(SSMMK(I,I)))
-        DMAXDIAG=DMAX1(DMAXDIAG,DABS(SSMMK(I,I)))
-        DMINROWSUM=DMIN1(DMINROWSUM,DROWSUM)
-        DMINCOLSUM=DMIN1(DMINCOLSUM,DCOLSUM)
-        IF(DROWSUM.LT.1.0D-12) IZERO_ROW=IZERO_ROW+1
-        IF(DCOLSUM.LT.1.0D-12) IZERO_COL=IZERO_COL+1
-        IF(DABS(SSMMK(I,I)).LT.1.0D-12) ISMALL_DIAG=ISMALL_DIAG+1
-        IF(I.LE.NX*IAT) THEN
-          IF(DROWSUM.LT.1.0D-12) IU_ZERO_ROW=IU_ZERO_ROW+1
-          IF(DABS(SSMMK(I,I)).LT.1.0D-12) IU_SMALL_DIAG=IU_SMALL_DIAG+1
-        ELSE IF(I.LE.2*NX*IAT) THEN
-          IF(DROWSUM.LT.1.0D-12) IV_ZERO_ROW=IV_ZERO_ROW+1
-          IF(DABS(SSMMK(I,I)).LT.1.0D-12) IV_SMALL_DIAG=IV_SMALL_DIAG+1
-        ELSE IF(I.LE.3*NX*IAT) THEN
-          IF(DROWSUM.LT.1.0D-12) IW_ZERO_ROW=IW_ZERO_ROW+1
-          IF(DABS(SSMMK(I,I)).LT.1.0D-12) IW_SMALL_DIAG=IW_SMALL_DIAG+1
-        ELSE
-          IF(DROWSUM.LT.1.0D-12) IP_ZERO_ROW=IP_ZERO_ROW+1
-          IF(DCOLSUM.LT.1.0D-12) IP_ZERO_COL=IP_ZERO_COL+1
-          IF(DABS(SSMMK(I,I)).LT.1.0D-12) IP_SMALL_DIAG=IP_SMALL_DIAG+1
-          IF(DROWSUM.LT.1.0D-12) THEN
-            ILOCAL=I-3*NX*IAT
-            IPNODE=(ILOCAL-1)/IAT+1
-            IPTIME=ILOCAL-(IPNODE-1)*IAT
-            WRITE(*,*)'ZERO PRESSURE ROW INDEX/NODE/TIME/RHS=',I,IPNODE,IPTIME,FFS(I)
-          END IF
-        END IF
-      END DO
-      WRITE(*,*)'MATRIX ZERO ROW/COL/SMALL DIAG=',IZERO_ROW,IZERO_COL,ISMALL_DIAG
-      WRITE(*,*)'U/V/W/P ZERO ROWS=',IU_ZERO_ROW,IV_ZERO_ROW,IW_ZERO_ROW,IP_ZERO_ROW
-      WRITE(*,*)'U/V/W/P SMALL DIAG=',IU_SMALL_DIAG,IV_SMALL_DIAG,IW_SMALL_DIAG,IP_SMALL_DIAG
-      WRITE(*,*)'PRESSURE ZERO ROW/COL/SMALL DIAG=',IP_ZERO_ROW,IP_ZERO_COL,IP_SMALL_DIAG
-      WRITE(*,*)'MATRIX MIN/MAX DIAG MIN ROW/COL SUM=',DMINDIAG,DMAXDIAG,DMINROWSUM,DMINCOLSUM
-
-      IPINNED_ROW=0
-      DO I=1,4*NX*IAT
-        DROWSUM=0.0D0
-        DO J=1,4*NX*IAT
-          DROWSUM=DROWSUM+DABS(SSMMK(I,J))
-        END DO
-        IF(DROWSUM.LT.1.0D-12) THEN
-          DO J=1,4*NX*IAT
-            SSMMK(I,J)=0.0D0
-            SSMMK(J,I)=0.0D0
-          END DO
-          SSMMK(I,I)=1.0D0
-          FFS(I)=0.0D0
-          IPINNED_ROW=IPINNED_ROW+1
-        END IF
-      END DO
-      IF(IPINNED_ROW.GT.0) WRITE(*,*)'PINNED ZERO MATRIX ROW/COL=',IPINNED_ROW
-       
-      n=nx*iat*4
-  
-      IF(ALLOCATED(ir)) DEALLOCATE(ir)
-      IF(ALLOCATED(ic)) DEALLOCATE(ic)
-      IF(ALLOCATED(a)) DEALLOCATE(a)
-      call triplet_init(SPARSE_A, n, n, max(1, min(1000000, 20*n)))
-      DO I=1,N
-        DO J=1,N
-          IF(SSMMK(I,J).NE.0.0D0) THEN
-            call triplet_add(SPARSE_A, I, J, SSMMK(I,J))
-          END IF
-        END DO
-      END DO
-      call triplet_to_csr(SPARSE_A, ir, ic, a, mn)
-      mnr=n+1
-      
-      write(*,*)'clear 99 !mnr,mn',mnr,mn    
-
-      IF(ALLOCATED(DENSE_A)) THEN
-        DENSE_A=0.0D0
-        DO I=1,N
-          DO J=ir(I),ir(I+1)-1
-            DENSE_A(I,ic(J))=DENSE_A(I,ic(J))+a(J)
-          END DO
-        END DO
-        DCSRMAX=0.0D0
-        DCSRSUM=0.0D0
-        DO I=1,N
-          DO J=1,N
-            DCSRMAX=DMAX1(DCSRMAX,DABS(DENSE_A(I,J)-SSMMK(I,J)))
-            DCSRSUM=DCSRSUM+DABS(DENSE_A(I,J)-SSMMK(I,J))
-          END DO
-        END DO
-        WRITE(*,*)'CSR_RECONSTRUCT_MAX_SUM_DIFF=',DCSRMAX,DCSRSUM
-      END IF
-      
   126 CONTINUE
       do i=1,64
         ipt(i)=0
@@ -4436,102 +4285,60 @@
         FF1(I)=FFS(I)
       END DO
 
-!     Marquardt_CG is evaluated on the physical, unscaled equations.
-!     Ozaki dot products and CSR matvecs are used for accuracy, but no row,
-!     column, block, or boundary weighting is applied.
-      ROW_SCALE=1.0D0
-      COL_SCALE=1.0D0
-      DROW_SCALE_CAP=1.0D4
-      DRS_MIN1=1.0D300
-      DRS_MIN2=1.0D300
-      DRS_MIN3=1.0D300
-      DRS_MIN4=1.0D300
-      DRS_MAX1=0.0D0
-      DRS_MAX2=0.0D0
-      DRS_MAX3=0.0D0
-      DRS_MAX4=0.0D0
-      ROW_SCALE=1.0D0
-      DPRE_SCALE_MAX=0.0D0
-      IPRE_SCALE_ROW=0
+!     Build the equilibrated Jacobian used by Marquardt/PARDISO:
+!       J_s = R * J * C,   f_s = R * f,   dx = C * dz.
+!     This changes only the algebraic conditioning.  WW4 continues to use
+!     the unscaled physical residual FFS_PHYS.
+      DROW_SCALE_CAP=1.0D8
+      DCOL_SCALE_CAP=1.0D8
       DO I=1,N
-        ROW_SCALE(I)=1.0D0
-        IF(I.LE.NX*IAT.AND.DABS(FFS(I)).GT.DPRE_SCALE_MAX) THEN
-          DPRE_SCALE_MAX=DABS(FFS(I))
-          IPRE_SCALE_ROW=I
-        END IF
-        IBLOCK=(I-1)/(NX*IAT)+1
-        IF(IBLOCK.EQ.1) THEN
-          DRS_MIN1=DMIN1(DRS_MIN1,ROW_SCALE(I))
-          DRS_MAX1=DMAX1(DRS_MAX1,ROW_SCALE(I))
-        ELSE IF(IBLOCK.EQ.2) THEN
-          DRS_MIN2=DMIN1(DRS_MIN2,ROW_SCALE(I))
-          DRS_MAX2=DMAX1(DRS_MAX2,ROW_SCALE(I))
-        ELSE IF(IBLOCK.EQ.3) THEN
-          DRS_MIN3=DMIN1(DRS_MIN3,ROW_SCALE(I))
-          DRS_MAX3=DMAX1(DRS_MAX3,ROW_SCALE(I))
+        DROWSUM=OZ_DDOT(ir(I+1)-ir(I),a(ir(I)),1,a(ir(I)),1)
+        IF(DROWSUM.GT.1.0D-300) THEN
+          ROW_SCALE(I)=1.0D0/DSQRT(DROWSUM)
+          ROW_SCALE(I)=DMIN1(DROW_SCALE_CAP,DMAX1(1.0D0/DROW_SCALE_CAP,ROW_SCALE(I)))
         ELSE
-          DRS_MIN4=DMIN1(DRS_MIN4,ROW_SCALE(I))
-          DRS_MAX4=DMAX1(DRS_MAX4,ROW_SCALE(I))
+          ROW_SCALE(I)=1.0D0
         END IF
       END DO
-      WRITE(*,*)'ROW_SCALE_MINMAX CONT/V/W/U CAP=',DRS_MIN1,DRS_MAX1,DRS_MIN2,DRS_MAX2,DRS_MIN3,DRS_MAX3,DRS_MIN4,DRS_MAX4,DROW_SCALE_CAP
-      IF(IPRE_SCALE_ROW.GT.0) THEN
-        IPNODE=(IPRE_SCALE_ROW-1)/IAT+1
-        IPTIME=IPRE_SCALE_ROW-(IPNODE-1)*IAT
-        WRITE(*,*)'MARQUARDT_PRE_SCALE_CONT_MAX ROW/NODE/TIME/FFS/ROWSCALE/CONSTR/REPLACED=',&
-             IPRE_SCALE_ROW,IPNODE,IPTIME,FFS(IPRE_SCALE_ROW),ROW_SCALE(IPRE_SCALE_ROW),&
-             IS_CONSTRAINED_ROW(IPRE_SCALE_ROW),IS_REPLACED_ROW(IPRE_SCALE_ROW)
-      END IF
-      DBLOCK_RMS1=0.0D0
-      DBLOCK_RMS2=0.0D0
-      DBLOCK_RMS3=0.0D0
-      DBLOCK_RMS4=0.0D0
-      DBLOCK_TARGET=0.0D0
-      DBLOCK_W1=1.0D0
-      DBLOCK_W2=1.0D0
-      DBLOCK_W3=1.0D0
-      DBLOCK_W4=1.0D0
-      IF(.FALSE..AND.IMARQUARDT_CG.NE.0.AND.DBLOCK_TARGET.GT.0.0D0) THEN
-        DBLOCK_W1=DMIN1(5.0D0,DMAX1(0.2D0,DBLOCK_TARGET/DMAX1(DBLOCK_RMS1,1.0D-30)))
-        DBLOCK_W2=DMIN1(5.0D0,DMAX1(0.2D0,DBLOCK_TARGET/DMAX1(DBLOCK_RMS2,1.0D-30)))
-        DBLOCK_W3=DMIN1(5.0D0,DMAX1(0.2D0,DBLOCK_TARGET/DMAX1(DBLOCK_RMS3,1.0D-30)))
-        DBLOCK_W4=DMIN1(5.0D0,DMAX1(0.2D0,DBLOCK_TARGET/DMAX1(DBLOCK_RMS4,1.0D-30)))
-      END IF
-      WRITE(*,*)'MARQUARDT PHYSICAL_SCALE BLOCK WEIGHTS CONT/V/W/U=',DBLOCK_W1,DBLOCK_W2,DBLOCK_W3,DBLOCK_W4
-      DOUTFLOW_VEL_ROW_WEIGHT=1.0D0
-      IF(.FALSE..AND.IMARQUARDT_CG.NE.0) THEN
-        DO I3=1,NSB3
-          II=NSBUO(I3)
-          DO ITT=1,IAT
-            IROW=GLOBAL_EQUATION_INDEX(ITT,II,2,NX,IAT)
-            ROW_SCALE(IROW)=ROW_SCALE(IROW)*DOUTFLOW_VEL_ROW_WEIGHT
-            IROW=GLOBAL_EQUATION_INDEX(ITT,II,3,NX,IAT)
-            ROW_SCALE(IROW)=ROW_SCALE(IROW)*DOUTFLOW_VEL_ROW_WEIGHT
-            IROW=GLOBAL_EQUATION_INDEX(ITT,II,4,NX,IAT)
-            ROW_SCALE(IROW)=ROW_SCALE(IROW)*DOUTFLOW_VEL_ROW_WEIGHT
-          END DO
-        END DO
-      END IF
-      IF(IMARQUARDT_CG.NE.0) WRITE(*,*)'MARQUARDT OUTFLOW VELOCITY ROW EXTRA WEIGHT=',DOUTFLOW_VEL_ROW_WEIGHT
-      DINLET_P_D2_ROW_WEIGHT=1.0D0
-      IF(.FALSE.) THEN
-        DO I3=1,NSB2
-          II=NSBUI(I3)
-          DO ITT=1,IAT
-            IROW=GLOBAL_EQUATION_INDEX(ITT,II,4,NX,IAT)
-            IF(IS_REPLACED_ROW(IROW).NE.0.AND.IS_CONSTRAINED_ROW(IROW).EQ.0) THEN
-              ROW_SCALE(IROW)=ROW_SCALE(IROW)*DINLET_P_D2_ROW_WEIGHT
-            END IF
-          END DO
-        END DO
-      END IF
-      WRITE(*,*)'INLET PRESSURE D2 ROW EXTRA WEIGHT=',DINLET_P_D2_ROW_WEIGHT
+
+!     Equilibrate columns after row scaling so every column of R*J has
+!     approximately unit Euclidean norm.
+      CG_DIAG=0.0D0
+      CG_WORK=0.0D0
       DO I=1,N
-        ROW_SCALE(I)=1.0D0
+        DO J=ir(I),ir(I+1)-1
+          CALL OZ_ADD_PRODUCT_SLICE6(CG_WORK(1,ic(J)),ROW_SCALE(I)*a(J),ROW_SCALE(I)*a(J))
+        END DO
       END DO
-      DPOISSON_ROW_EXTRA_WEIGHT=1.0D0
-      IF(IMARQUARDT_CG.NE.0) WRITE(*,*)'MARQUARDT UNSCALED_CG FLAG=',IMARQUARDT_UNSCALED_CG
-      IF(IMARQUARDT_UNSCALED_CG.NE.0) WRITE(*,*)'MARQUARDT ROW/COL SCALING DISABLED FOR CG AND SALS_R'
+      DO I=1,N
+        DO K=6,1,-1
+          CG_DIAG(I)=CG_DIAG(I)+CG_WORK(K,I)
+        END DO
+      END DO
+      DO I=1,N
+        IF(CG_DIAG(I).GT.1.0D-300) THEN
+          COL_SCALE(I)=1.0D0/DSQRT(CG_DIAG(I))
+          COL_SCALE(I)=DMIN1(DCOL_SCALE_CAP,DMAX1(1.0D0/DCOL_SCALE_CAP,COL_SCALE(I)))
+        ELSE
+          COL_SCALE(I)=1.0D0
+        END IF
+      END DO
+
+!     From here onward a and FFS are J_s and f_s.  The solution is mapped
+!     back to physical variables by x = C*z after the linear solve.
+      DO I=1,N
+        DO J=ir(I),ir(I+1)-1
+          a(J)=ROW_SCALE(I)*a(J)*COL_SCALE(ic(J))
+        END DO
+        FFS(I)=ROW_SCALE(I)*FFS(I)
+      END DO
+      DRS_MIN1=MINVAL(ROW_SCALE)
+      DRS_MAX1=MAXVAL(ROW_SCALE)
+      DCS_MIN1=MINVAL(COL_SCALE)
+      DCS_MAX1=MAXVAL(COL_SCALE)
+      WRITE(*,*)'MARQUARDT ROW/COL SCALING ENABLED FOR J_S=RJC'
+      WRITE(*,*)'MARQUARDT ROW_SCALE MIN/MAX/CAP=',DRS_MIN1,DRS_MAX1,DROW_SCALE_CAP
+      WRITE(*,*)'MARQUARDT COL_SCALE MIN/MAX/CAP=',DCS_MIN1,DCS_MAX1,DCOL_SCALE_CAP
       DSU=0.0D0
       DSV=0.0D0
       DSW=0.0D0
@@ -4563,52 +4370,12 @@
              ISCALED_MAX_CONT_ROW,IPNODE,IPTIME,FFS(ISCALED_MAX_CONT_ROW),ROW_SCALE(ISCALED_MAX_CONT_ROW),&
              IS_CONSTRAINED_ROW(ISCALED_MAX_CONT_ROW),IS_REPLACED_ROW(ISCALED_MAX_CONT_ROW),XX(IPNODE),YY(IPNODE),ZZ(IPNODE)
       END IF
-      DO I=1,N
-        COL_SCALE(I)=1.0D0
-      END DO
-!     COL_SCALE is identically one in the physical-scale path; skip the
-!     matrix multiply loop.
+!     a and FFS now hold J_s and f_s.  Keep the physical residual in
+!     FFS_PHYS for WW4 and nonlinear convergence tests.
 
       IF(INEWTON_PARDISO.NE.0) THEN
-        NORMAL_RHS=0.0D0
-        DO I=1,N
-          NORMAL_RHS(I)=-FFS(I)
-          FFS(I)=NORMAL_RHS(I)
-          x(I,1)=0.0D0
-        END DO
-        WRITE(*,*)'NEWTON_PARDISO RHS_SIGN_MINUS'
-        call pardiso (ipt, maxfct, mnum, mtype, iphase, n, a, ir, ic, iperm, nrhs, iparm, msglvl, FFS, x, ierror)
-        WRITE(*,*)'NEWTON_PARDISO IERROR=',ierror
-        WRITE(*,*)'PARDISO IPARM 14 18 19 20 22=',iparm(14),iparm(18),iparm(19),iparm(20),iparm(22)
-        IF(ierror.NE.0) THEN
-          WRITE(*,*)'NEWTON_PARDISO FAILED. STOP NEWTON ITERATION.'
-          STOP
-        END IF
-        DRESNORM=0.0D0
-        DRHSNORM=0.0D0
-        DO I=1,N
-          DAXI=0.0D0
-          DO J=ir(I),ir(I+1)-1
-            DAXI=DAXI+a(J)*x(ic(J),1)
-          END DO
-          DRESNORM=DRESNORM+(DAXI-NORMAL_RHS(I))**2
-          DRHSNORM=DRHSNORM+NORMAL_RHS(I)**2
-        END DO
-        DRESNORM=DSQRT(DRESNORM)
-        DRHSNORM=DSQRT(DRHSNORM)
-        IF(DRHSNORM.GT.0.0D0) THEN
-          DLINEAR_REL=DRESNORM/DRHSNORM
-          WRITE(*,*)'NEWTON_PARDISO_REL_RESIDUAL CSR=',DLINEAR_REL
-        ELSE
-          DLINEAR_REL=0.0D0
-          WRITE(*,*)'NEWTON_PARDISO_ABS_RESIDUAL CSR=',DRESNORM
-        END IF
-        DO I=1,N
-          x(I,1)=COL_SCALE(I)*x(I,1)
-        END DO
-        ICG_DONE=0
-        ICG_MAX=0
-        GO TO 127
+        WRITE(*,*)'NEWTON_PARDISO PATH REMOVED. USE DIRECT CSR MARQUARDT_CG.'
+        STOP
       END IF
 
       IF(IDIRECT_BICGSTAB.EQ.1.OR.IDIRECT_BICGSTAB.EQ.2) THEN
@@ -4741,59 +4508,8 @@
       END IF
 
       IF(IDIRECT_BICGSTAB.EQ.3) THEN
-        DLM_LAMBDA=DLM_LAMBDA_CURRENT
-        NORMAL_RHS=0.0D0
-        DO I=1,N
-          NORMAL_RHS(I)=FFS(I)
-        END DO
-        NDIAG_MISSING=0
-        DO I=1,N
-          IDIAG=0
-          DO J=ir(I),ir(I+1)-1
-            IF(ic(J).EQ.I) THEN
-              a(J)=a(J)+DLM_LAMBDA
-              IDIAG=1
-              EXIT
-            END IF
-          END DO
-          IF(IDIAG.EQ.0) NDIAG_MISSING=NDIAG_MISSING+1
-        END DO
-        DO I=1,N
-          FFS(I)=NORMAL_RHS(I)
-          x(I,1)=0.0D0
-        END DO
-        WRITE(*,*)'SHIFTED_JACOBIAN_PARDISO RHS_SIGN_PLUS LAMBDA/DIAG_MISSING=',DLM_LAMBDA,NDIAG_MISSING
-        call pardiso (ipt, maxfct, mnum, mtype, iphase, n, a, ir, ic, iperm, nrhs, iparm, msglvl, FFS, x, ierror)
-        WRITE(*,*)'SHIFTED_JACOBIAN_PARDISO IERROR=',ierror
-        IF(ierror.NE.0) THEN
-          WRITE(*,*)'SHIFTED_JACOBIAN_PARDISO FAILED. STOP NEWTON ITERATION.'
-          STOP
-        END IF
-        DRESNORM=0.0D0
-        DRHSNORM=0.0D0
-        DO I=1,N
-          DAXI=0.0D0
-          DO J=ir(I),ir(I+1)-1
-            DAXI=DAXI+a(J)*x(ic(J),1)
-          END DO
-          DRESNORM=DRESNORM+(DAXI-NORMAL_RHS(I))**2
-          DRHSNORM=DRHSNORM+NORMAL_RHS(I)**2
-        END DO
-        DRESNORM=DSQRT(DRESNORM)
-        DRHSNORM=DSQRT(DRHSNORM)
-        IF(DRHSNORM.GT.0.0D0) THEN
-          DLINEAR_REL=DRESNORM/DRHSNORM
-          WRITE(*,*)'SHIFTED_JACOBIAN_PARDISO_REL_RESIDUAL=',DLINEAR_REL
-        ELSE
-          DLINEAR_REL=0.0D0
-          WRITE(*,*)'SHIFTED_JACOBIAN_PARDISO_ABS_RESIDUAL=',DRESNORM
-        END IF
-        DO I=1,N
-          x(I,1)=COL_SCALE(I)*x(I,1)
-        END DO
-        ICG_DONE=0
-        ICG_MAX=0
-        GO TO 127
+        WRITE(*,*)'SHIFTED_JACOBIAN_PARDISO PATH REMOVED. USE DIRECT CSR MARQUARDT_CG.'
+        STOP
       END IF
 
 !     -------- MARQUARDT DIAGONAL NORMAL EQUATION -------------------
@@ -4803,11 +4519,6 @@
 !     heavy for the 5,6,6 case with the current triplet CSR builder.
       DLM_LAMBDA=DLM_LAMBDA_CURRENT
       IGN_ACTIVE=0
-      IF(IGAUSS_NEWTON_TRIAL.NE.0.AND.IGN_DECREASE_COUNT.GE.3.AND.DLM_LAMBDA_CURRENT.LE.DGN_LAMBDA_SWITCH.AND.WW4.LE.DGN_WW4_SWITCH) THEN
-        DLM_LAMBDA=0.0D0
-        IGN_ACTIVE=1
-        WRITE(*,*)'GAUSS_NEWTON_TRIAL ACTIVE WW4/LAMBDA_CURRENT/COUNT=',WW4,DLM_LAMBDA_CURRENT,IGN_DECREASE_COUNT
-      END IF
       IF(IMARQUARDT_CG.NE.0) THEN
         NORMAL_RHS=0.0D0
         CG_DIAG=0.0D0
@@ -4866,7 +4577,7 @@
           SALS_DIAG(I)=NORMAL_DIAG(I)
         END DO
         !$OMP END PARALLEL DO
-        IF(IPK.EQ.0) THEN
+        IF(IPK.EQ.0.AND.ITT1.EQ.1) THEN
           DLM_TRACE_INV_INIT=0.0D0
           DO I=1,N
             IF(SALS_DIAG(I).GT.1.0D-300) DLM_TRACE_INV_INIT=DLM_TRACE_INV_INIT+1.0D0/SALS_DIAG(I)
@@ -4939,92 +4650,77 @@
         WRITE(*,*)'OUTFLOW_U_NORMAL_DIAG ROW_RNORM/ROW_JNORM/JTR_NORM/TOTAL_U_JTR/COS=',DOUT_ROW_RNORM,DOUT_ROW_JNORM,DOUT_JTR_NORM,DOUT_TOTAL_JTR_NORM,DOUT_COS
         WRITE(*,*)'OUTFLOW_U_NORMAL_DIAG COL_COUNT/DIAG_MEAN/COL_SCALE_MINMAX=',IOUT_COL_COUNT,DOUT_COL_DIAG_MEAN,DOUT_COL_SCALE_MIN,DOUT_COL_SCALE_MAX
         IF(IOUT_MAX_ROW.NE.0) WRITE(*,*)'OUTFLOW_U_NORMAL_MAX COL/NODE/TIME/OUTJTR/TOTALJTR/CGDIAG/NORMALDIAG=',IOUT_MAX_ROW,(IOUT_MAX_ROW-1)/IAT+1,IOUT_MAX_ROW-((IOUT_MAX_ROW-1)/IAT)*IAT,CG_TMP(IOUT_MAX_ROW),NORMAL_RHS(IOUT_MAX_ROW),CG_DIAG(IOUT_MAX_ROW),NORMAL_DIAG(IOUT_MAX_ROW)
-        CG_X=0.0D0
-        CG_R=NORMAL_RHS
-        CG_Z=0.0D0
-        CG_P=0.0D0
-        !$OMP PARALLEL DO PRIVATE(I) IF(N.GT.1000)
-        DO I=1,N
-          IF(IMARQUARDT_PCG.NE.0) THEN
-            IF(CG_DIAG(I)+DLM_LAMBDA*NORMAL_DIAG(I).GT.0.0D0) THEN
-              CG_Z(I)=CG_R(I)/(CG_DIAG(I)+DLM_LAMBDA*NORMAL_DIAG(I))
-            ELSE
-              CG_Z(I)=0.0D0
-            END IF
-          ELSE
-            CG_Z(I)=CG_R(I)
-          END IF
-          CG_P(I)=CG_Z(I)
-        END DO
-        !$OMP END PARALLEL DO
-        CG_RHSN=OZ_DDOT(N,NORMAL_RHS,1,NORMAL_RHS,1)
-        CG_RHO=OZ_DDOT(N,CG_R,1,CG_Z,1)
-        CG_RHSN=DSQRT(DMAX1(CG_RHSN,0.0D0))
-        IF(CG_RHSN.LE.0.0D0) CG_RHSN=1.0D0
         ICG_MAX=3000
         DCG_TOL=1.0D-6
-        CG_RHO_NEW=CG_RHO
+        NNZ_NORMAL_PARDISO=0
+        IPARDISO_DIRECT_OVERRIDE=0
+        PARDISO_DIRECT_ENV=''
+        CALL GET_ENVIRONMENT_VARIABLE('OCFEM_PARDISO_DIRECT',PARDISO_DIRECT_ENV, &
+             LENGTH=IPARDISO_ENV_LENGTH,STATUS=IPARDISO_ENV_STATUS)
+        IF(IPARDISO_ENV_STATUS.EQ.0.AND.IPARDISO_ENV_LENGTH.GT.0) THEN
+          IF(TRIM(ADJUSTL(PARDISO_DIRECT_ENV)).EQ.'1') IPARDISO_DIRECT_OVERRIDE=1
+        END IF
+        IPARDISO_AUGMENTED=1
+        PARDISO_DIRECT_ENV=''
+        CALL GET_ENVIRONMENT_VARIABLE('OCFEM_PARDISO_AUGMENTED',PARDISO_DIRECT_ENV, &
+             LENGTH=IPARDISO_ENV_LENGTH,STATUS=IPARDISO_ENV_STATUS)
+        IF(IPARDISO_ENV_STATUS.EQ.0.AND.IPARDISO_ENV_LENGTH.GT.0) THEN
+          READ(PARDISO_DIRECT_ENV(1:IPARDISO_ENV_LENGTH),*,IOSTAT=IPARDISO_ENV_STATUS) IPARDISO_AUGMENTED
+        END IF
+        IF((ir(N+1)-1).GT.20000000.AND.IPARDISO_DIRECT_OVERRIDE.EQ.0) THEN
+          ICG_STATUS=-2001
+          DLINEAR_REL=HUGE(1.0D0)
+          WRITE(*,*)'MARQUARDT_PARDISO PRECHECK FALLBACK N/J_NNZ=',N,ir(N+1)-1
+        ELSE IF(IPARDISO_AUGMENTED.EQ.1) THEN
+          LCHORD_REBUILD=.FALSE.
+          IF(IPK.EQ.0.OR.ICHORD_REUSE_COUNT.GE.ICHORD_MAX_REUSE) LCHORD_REBUILD=.TRUE.
+          IF(DABS(DLM_LAMBDA-DCHORD_FACTOR_LAMBDA).GT. &
+               1.0D-12*DMAX1(1.0D0,DABS(DLM_LAMBDA),DABS(DCHORD_FACTOR_LAMBDA))) LCHORD_REBUILD=.TRUE.
+          IF(IPK.GT.0.AND.DLAMBDA_RATIO.LT.0.25D0) LCHORD_REBUILD=.TRUE.
+          CALL solve_marquardt_pardiso_augmented_cached(N,ir,ic,a,FFS,NORMAL_DIAG,DLM_LAMBDA, &
+               DCG_TOL,CG_X,DLINEAR_REL,ICG_STATUS,NNZ_NORMAL_PARDISO,LCHORD_REBUILD)
+          IF(LCHORD_REBUILD) THEN
+            ICHORD_REUSE_COUNT=0
+            ICHORD_REBUILD_COUNT=ICHORD_REBUILD_COUNT+1
+            DCHORD_FACTOR_LAMBDA=DLM_LAMBDA
+          END IF
+          ICHORD_REUSE_COUNT=ICHORD_REUSE_COUNT+1
+          WRITE(*,*)'MARQUARDT_CHORD REBUILD/REUSE_COUNT/REBUILDS=', &
+               LCHORD_REBUILD,ICHORD_REUSE_COUNT,ICHORD_REBUILD_COUNT
+        ELSE
+          CALL solve_marquardt_pardiso(N,ir,ic,a,NORMAL_RHS,NORMAL_DIAG,DLM_LAMBDA, &
+               DCG_TOL,CG_X,DLINEAR_REL,ICG_STATUS,NNZ_NORMAL_PARDISO)
+        END IF
+        DLINEAR_REC_REL=DLINEAR_REL
         ICG_DONE=0
-        DO ICG=1,ICG_MAX
-          ICG_DONE=ICG
-          CALL OZ_CSR_MV(N,ir,ic,a,CG_P,CG_TMP)
-          CALL OZ_CSR_TMV_OMP(N,ir,ic,a,CG_TMP,CG_AP,CG_WORK_T)
-          !$OMP PARALLEL DO PRIVATE(I,K) IF(N.GT.1000)
-          DO I=1,N
-            DO K=1,6
-              CG_WORK(K,I)=0.0D0
-            END DO
-            CALL OZ_ADD_SLICE6(CG_WORK(1,I),CG_AP(I))
-            CALL OZ_ADD_PRODUCT_SLICE6(CG_WORK(1,I),DLM_LAMBDA*NORMAL_DIAG(I),CG_P(I))
-            CG_AP(I)=0.0D0
-            DO K=6,1,-1
-              CG_AP(I)=CG_AP(I)+CG_WORK(K,I)
-            END DO
-          END DO
-          !$OMP END PARALLEL DO
-          CG_PAP=OZ_DDOT(N,CG_P,1,CG_AP,1)
-          IF(CG_PAP.LE.0.0D0) EXIT
-          CG_ALPHA=CG_RHO/CG_PAP
-          !$OMP PARALLEL DO PRIVATE(I) IF(N.GT.1000)
-          DO I=1,N
-            CG_X(I)=CG_X(I)+CG_ALPHA*CG_P(I)
-            CG_R(I)=CG_R(I)-CG_ALPHA*CG_AP(I)
-          END DO
-          !$OMP END PARALLEL DO
-          !$OMP PARALLEL DO PRIVATE(I) IF(N.GT.1000)
-          DO I=1,N
-            IF(IMARQUARDT_PCG.NE.0) THEN
-              IF(CG_DIAG(I)+DLM_LAMBDA*NORMAL_DIAG(I).GT.0.0D0) THEN
-                CG_Z(I)=CG_R(I)/(CG_DIAG(I)+DLM_LAMBDA*NORMAL_DIAG(I))
-              ELSE
-                CG_Z(I)=0.0D0
-              END IF
-            ELSE
-              CG_Z(I)=CG_R(I)
-            END IF
-          END DO
-          !$OMP END PARALLEL DO
-          CG_RHO_NEW=OZ_DDOT(N,CG_R,1,CG_Z,1)
-          DRESNORM=OZ_DDOT(N,CG_R,1,CG_R,1)
-          IF(DSQRT(DMAX1(DRESNORM,0.0D0))/CG_RHSN.LT.DCG_TOL) EXIT
-          CG_BETA=CG_RHO_NEW/CG_RHO
-          !$OMP PARALLEL DO PRIVATE(I) IF(N.GT.1000)
-          DO I=1,N
-            CG_P(I)=CG_Z(I)+CG_BETA*CG_P(I)
-          END DO
-          !$OMP END PARALLEL DO
-          CG_RHO=CG_RHO_NEW
-        END DO
+        DLM_LAMBDA_USED=DLM_LAMBDA
+        WRITE(*,*)'MARQUARDT_PARDISO MODE/NNZ_SYSTEM/TRUE_RELRES/TOL/LAMBDA=',IPARDISO_AUGMENTED,NNZ_NORMAL_PARDISO,DLINEAR_REL,DCG_TOL,DLM_LAMBDA
+        IF(ICG_STATUS.EQ.-2003) THEN
+          WRITE(*,*)'PARDISO SYMBOLIC-ONLY MEMORY DIAGNOSIS COMPLETE.'
+          STOP 0
+        END IF
+        IF(ICG_STATUS.LT.0) THEN
+          WRITE(*,*)'MARQUARDT_PARDISO MEMORY_SAFE_MATRIX_FREE_PCG FALLBACK STATUS=',ICG_STATUS
+          CALL OZ_MARQUARDT_PCG(N,ir,ic,a,NORMAL_RHS,CG_DIAG,NORMAL_DIAG,DLM_LAMBDA, &
+               IMARQUARDT_PCG,ICG_MAX,DCG_TOL,CG_X,CG_R,CG_Z,CG_P,CG_AP,CG_TMP, &
+               CG_WORK,CG_WORK_T,ICG_DONE,ICG_STATUS,DLINEAR_REC_REL,DLINEAR_REL)
+          WRITE(*,*)'MARQUARDT_MATRIX_FREE_PCG ITER/STATUS/REC_REL/TRUE_REL=',ICG_DONE,ICG_STATUS,DLINEAR_REC_REL,DLINEAR_REL
+        END IF
+        WRITE(*,*)'MARQUARDT_LINEAR_SOLVER STATUS/TRUE_RELRES=',ICG_STATUS,DLINEAR_REL
+        IF(ICG_STATUS.EQ.1) THEN
+!         A finite inexact Marquardt direction can still reduce the nonlinear
+!         residual.  Keep RELRES as a diagnostic and let the nonlinear
+!         line-search/SALS test decide whether the update is acceptable.
+          WRITE(*,*)'MARQUARDT LINEAR WARNING TRUE_RESIDUAL ABOVE TOL; CONTINUE=',DLINEAR_REL,DCG_TOL
+        ELSE IF(ICG_STATUS.NE.0) THEN
+          WRITE(*,*)'MARQUARDT DIRECTION NOT APPLIED; SALS LAMBDA UNCHANGED=',DLM_LAMBDA_CURRENT
+          ERROR STOP 'MARQUARDT_LINEAR_SOLVE_FAILED'
+        END IF
         !$OMP PARALLEL DO PRIVATE(I) IF(N.GT.1000)
         DO I=1,N
           x(I,1)=COL_SCALE(I)*CG_X(I)
         END DO
         !$OMP END PARALLEL DO
-        DRESNORM=OZ_DDOT(N,CG_R,1,CG_R,1)
-        DLINEAR_REL=DSQRT(DMAX1(DRESNORM,0.0D0))/CG_RHSN
-        DLM_LAMBDA_USED=DLM_LAMBDA
-        WRITE(*,*)'MARQUARDT_CG ITER/MAX/RELRES/TOL/LAMBDA/PCG=',ICG_DONE,ICG_MAX,DLINEAR_REL,DCG_TOL,DLM_LAMBDA,IMARQUARDT_PCG
-        IF(IGN_ACTIVE.NE.0) WRITE(*,*)'GAUSS_NEWTON_TRIAL RESULT ITER/RELRES=',ICG_DONE,DLINEAR_REL
         GOTO 127
       END IF
 
@@ -5130,7 +4826,7 @@
         END IF
       END IF
 
-      IF(ALLOCATED(ISINGULAR_PIN).AND.IAPPLY_DGESV_PIN.NE.0) THEN
+      IF(.FALSE.) THEN
         IPINNED_ROW=0
         DO I=1,N
           IF(ISINGULAR_PIN(I).NE.0) THEN
@@ -5162,14 +4858,8 @@
         END IF
       END IF
 
-      call pardiso (ipt, maxfct, mnum, mtype, iphase, n, a, ir, ic, iperm, nrhs, iparm, msglvl, FFS, x, ierror)
-
-      write(*,*)'ierror=',ierror
-      WRITE(*,*)'PARDISO IPARM 14 18 19 20 22=',iparm(14),iparm(18),iparm(19),iparm(20),iparm(22)
-      IF(ierror.NE.0) THEN
-        WRITE(*,*)'PARDISO FAILED. STOP NEWTON ITERATION.'
-        STOP
-      END IF
+      WRITE(*,*)'PARDISO FALLBACK PATH REMOVED. USE DIRECT CSR MARQUARDT_CG.'
+      STOP
 
       DO I=1,N
         x(I,1)=COL_SCALE(I)*x(I,1)
@@ -5209,19 +4899,7 @@
         WRITE(*,*)'USING_DGESV_SOLUTION_FOR_NEWTON_UPDATE'
       END IF
 
-!     -------- SOLUTION OF LINEAR SYSTEM ------------
-!      trans='N'
-!      n=nx*4
-!      nrhs=1
-!      lda=200000
-!      ldb=200000
-!        write(*,*)' Clear ohkubo 110!'   
-!      CALL dgetrf(n,n,ssmmk,lda,ipiv,info)
-!
-!      CALL dgetrs(trans,n,nrhs,ssmmk,lda,ipiv,ffs,ldb,info)
-!      write(*,*) '----------info=',info
-!
-!
+
 !     The linear system row order is the equation order, but the solution
 !     vector X and the Newton correction DDUVWP are ordered as U,V,W,P.
      DO I=1,4*IAT*NX
@@ -5601,23 +5279,23 @@
       DPHYS_PLUS=0.0D0
       DPHYS_MINUS=0.0D0
       DO I=1,N
-        DFSCALED=FF1(I)*ROW_SCALE(I)
-        DAXI=(RELAX_RETRY_U*CG_AP(I)+RELAX_RETRY_VW*CG_R(I)+RELAX_RETRY_P*CG_Z(I))*ROW_SCALE(I)
+        DPHYS_JD=RELAX_RETRY_U*CG_AP(I)+RELAX_RETRY_VW*CG_R(I)+RELAX_RETRY_P*CG_Z(I)
+        DFSCALED=FF1(I)*ROW_SCALE_BASE(I)
+        DAXI=DPHYS_JD*ROW_SCALE_BASE(I)
         DS_OLD=DS_OLD+DFSCALED*DFSCALED
         DS_PRED=DS_PRED+(DFSCALED+DAXI)*(DFSCALED+DAXI)
         DROWSUM=DROWSUM+(DFSCALED-DAXI)*(DFSCALED-DAXI)
-        DPHYS_JD=DAXI
         DPHYS_OLD=DPHYS_OLD+FFS_PHYS(I)*FFS_PHYS(I)
         DPHYS_PLUS=DPHYS_PLUS+(FFS_PHYS(I)+DPHYS_JD)*(FFS_PHYS(I)+DPHYS_JD)
         DPHYS_MINUS=DPHYS_MINUS+(FFS_PHYS(I)-DPHYS_JD)*(FFS_PHYS(I)-DPHYS_JD)
       END DO
       WRITE(*,*)'MARQUARDT_SIGN_PREDICT NORM_OLD/PLUS/MINUS=',DSQRT(DS_OLD),DSQRT(DS_PRED),DSQRT(DROWSUM)
       WRITE(*,*)'MARQUARDT_SIGN_PHYS_PREDICT NORM_OLD/PLUS/MINUS=',DSQRT(DPHYS_OLD),DSQRT(DPHYS_PLUS),DSQRT(DPHYS_MINUS)
-      IF(DPHYS_MINUS.LT.DPHYS_PLUS) THEN
+      IF(DROWSUM.LT.DS_PRED) THEN
         STEP_SIGN=-UPDATE_SIGN
-        WRITE(*,*)'MARQUARDT_SIGN_SELECT MINUS PHYS'
+        WRITE(*,*)'MARQUARDT_SIGN_SELECT MINUS SCALED_OBJECTIVE'
       ELSE
-        WRITE(*,*)'MARQUARDT_SIGN_SELECT PLUS PHYS'
+        WRITE(*,*)'MARQUARDT_SIGN_SELECT PLUS SCALED_OBJECTIVE'
       END IF
       IF(IUSE_STEEPEST.NE.0) THEN
         STEP_SIGN=DSD_PHYS_SIGN
@@ -5803,11 +5481,11 @@
         DPMAXV=-1.0D300
         IUMIN=0
         ITUMIN=0
-        IF(IPK.EQ.0) THEN
-          OPEN(89,FILE='results\newton_uvwp_by_step.dat',STATUS='REPLACE')
-          WRITE(89,*)'STEP ITT NODE X Y Z U V W P'
-        ELSE
-          OPEN(89,FILE='results\newton_uvwp_by_step.dat',STATUS='UNKNOWN',POSITION='APPEND')
+        IF(IFAST_PRODUCTION.EQ.0.AND.ITT1.EQ.1.AND.IPK.EQ.0) THEN
+          OPEN(89,FILE='results/newton_uvwp_by_step.dat',STATUS='REPLACE')
+          WRITE(89,*)'TIME_STEP NEWTON_STEP ITT NODE X Y Z U V W P'
+        ELSE IF(IFAST_PRODUCTION.EQ.0) THEN
+          OPEN(89,FILE='results/newton_uvwp_by_step.dat',STATUS='UNKNOWN',POSITION='APPEND')
         END IF
         DO I=1,NX
         DO ITT=1,IAT
@@ -5823,10 +5501,11 @@
           DWMAXV=DMAX1(DWMAXV,W(ITT,I))
           DPMIN=DMIN1(DPMIN,P(ITT,I))
           DPMAXV=DMAX1(DPMAXV,P(ITT,I))
-          WRITE(89,'(I8,1X,I4,1X,I8,1X,7(ES24.16,1X))') IPK+1,ITT,I,XX(I),YY(I),ZZ(I),U(ITT,I),V(ITT,I),W(ITT,I),P(ITT,I)
+          IF(IFAST_PRODUCTION.EQ.0) &
+            WRITE(89,'(I8,1X,I8,1X,I4,1X,I8,1X,7(ES24.16,1X))') ITT1,IPK+1,ITT,I,XX(I),YY(I),ZZ(I),U(ITT,I),V(ITT,I),W(ITT,I),P(ITT,I)
         END DO
         END DO
-        CLOSE(89)
+        IF(IFAST_PRODUCTION.EQ.0) CLOSE(89)
         WRITE(*,*)'STEP_U_MIN_MAX=',IPK+1,DUMIN,DUMAXV
         WRITE(*,*)'STEP_V_MIN_MAX=',IPK+1,DVMIN,DVMAXV
         WRITE(*,*)'STEP_W_MIN_MAX=',IPK+1,DWMIN,DWMAXV
@@ -5840,16 +5519,22 @@
         WRITE(*,*)'STEP_ERR1_WW4=',IPK+1,ERR1,WW4
         WRITE(*,*)'STEP_ERR1_ABS_REL_L2_REL_MAX=',IPK+1,ERR1_ABS,ERR1_REL_L2,ERR1_REL_MAX
         WRITE(*,*)'STEP_SUMMARY=',IPK+1,' LAMBDA_USED=',DLM_LAMBDA_USED,' LAMBDA_NEXT=',DLM_LAMBDA_CURRENT,' ERR1=',ERR1,' WW4=',WW4
+        WRITE(*,'(A,I6,5(A,ES24.16))') &
+             'STEP_OUT ',IPK+1,' LAMBDA=',DLM_LAMBDA_USED,' ERR1=',ERR1,' WW4=',WW4,' RELRES=',DLINEAR_REL,' R=',DLAMBDA_RATIO
         WRITE(*,*)'STEP_SUMMARY_BLOCK_NORM CONT/V/W/U=',IPK+1,DSQRT(DRU),DSQRT(DRV),DSQRT(DRW),DSQRT(DRP)
         WRITE(*,*)'STEP_SUMMARY_UVWP_MINMAX=',IPK+1,DUMIN,DUMAXV,DVMIN,DVMAXV,DWMIN,DWMAXV,DPMIN,DPMAXV
-        REWIND(2)
-        DO I=1,NX
-        DO ITT=1,IAT
-          WRITE(2,2100) T+DT*TTC(ITT),XX(I),YY(I),ZZ(I),U(ITT,I),V(ITT,I),W(ITT,I),P(ITT,I),Re
-        END DO
-        END DO
-        FLUSH(2)
-        WRITE(*,*)'STEP_CHECKPOINT_WRITTEN=',IPK+1
+        IF(IFAST_PRODUCTION.EQ.0) THEN
+          FNAME_CHECKPOINT=TRIM(FNAME_RESULT)//'.checkpoint'
+          OPEN(92,FILE=FNAME_CHECKPOINT,STATUS='REPLACE',ACTION='WRITE')
+          DO I=1,NX
+          DO ITT=1,IAT
+            WRITE(92,2100) T+DT*TTC(ITT),XX(I),YY(I),ZZ(I),U(ITT,I),V(ITT,I),W(ITT,I),P(ITT,I),Re
+          END DO
+          END DO
+          FLUSH(92)
+          CLOSE(92)
+          WRITE(*,*)'STEP_CHECKPOINT_WRITTEN=',IPK+1,TRIM(FNAME_CHECKPOINT)
+        END IF
         ION_WALL=0
         ION_INLET=0
         ION_POUT=0
@@ -5865,7 +5550,7 @@
         WRITE(*,*)'STEP_U_MIN_NODE/TIME/XYZ/WALL/INLET/POUT=',IPK+1,IUMIN,ITUMIN,XX(IUMIN),YY(IUMIN),ZZ(IUMIN),ION_WALL,ION_INLET,ION_POUT
       END IF
 
-      IF(IPK.EQ.0) THEN
+      IF(IPK.EQ.0.AND.IFAST_PRODUCTION.EQ.0) THEN
         DUMIN=1.0D300
         DUMAXV=-1.0D300
         DVMIN=1.0D300
@@ -5874,8 +5559,12 @@
         DWMAXV=-1.0D300
         DPMIN=1.0D300
         DPMAXV=-1.0D300
-        OPEN(88,FILE='results\newton1_uvwp_debug.dat',STATUS='REPLACE')
-        WRITE(88,*)'ITT NODE X Y Z U V W P'
+        IF(ITT1.EQ.1) THEN
+          OPEN(88,FILE='results/newton1_uvwp_debug.dat',STATUS='REPLACE')
+          WRITE(88,*)'TIME_STEP ITT NODE X Y Z U V W P'
+        ELSE
+          OPEN(88,FILE='results/newton1_uvwp_debug.dat',STATUS='UNKNOWN',POSITION='APPEND')
+        END IF
         DO I=1,NX
         DO ITT=1,IAT
           DUMIN=DMIN1(DUMIN,U(ITT,I))
@@ -5886,7 +5575,7 @@
           DWMAXV=DMAX1(DWMAXV,W(ITT,I))
           DPMIN=DMIN1(DPMIN,P(ITT,I))
           DPMAXV=DMAX1(DPMAXV,P(ITT,I))
-          WRITE(88,'(I4,1X,I8,1X,7(ES24.16,1X))') ITT,I,XX(I),YY(I),ZZ(I),U(ITT,I),V(ITT,I),W(ITT,I),P(ITT,I)
+          WRITE(88,'(I8,1X,I4,1X,I8,1X,7(ES24.16,1X))') ITT1,ITT,I,XX(I),YY(I),ZZ(I),U(ITT,I),V(ITT,I),W(ITT,I),P(ITT,I)
         END DO
         END DO
         CLOSE(88)
@@ -5904,41 +5593,53 @@
         WRITE(*,*)'ERR,FX,IPK,IPK1,Re=',ERR1,WW4,IPK,IPK1,Re
         GO TO 30
       ELSE
-      IF(WW4.GT.1.0D-8) WRITE(*,*)'NEWTON_MAX_REACHED IPK/MAX/WW4=',IPK,INEWTON_MAX,WW4
-      IF(WW4.LE.1.0D-8) WRITE(*,*)'NEWTON_CONVERGED_BY_WW4 IPK/WW4=',IPK,WW4
-      IPK1=IPK1+1
-      WRITE(*,*)'ERR,FX,IPK,IPK1,Re=',ERR1,WW4,IPK,IPK1,Re
+        IF(WW4.GT.1.0D-8) THEN
+          WRITE(*,*)'NEWTON_MAX_REACHED IPK/MAX/WW4=',IPK,INEWTON_MAX,WW4
+          ERROR STOP 'TIME_STEP_NEWTON_DID_NOT_CONVERGE'
+        END IF
+        WRITE(*,*)'NEWTON_CONVERGED_BY_WW4 IPK/WW4=',IPK,WW4
+        IPK1=IPK1+1
+        WRITE(*,*)'ERR,FX,IPK,IPK1,Re=',ERR1,WW4,IPK,IPK1,Re
       END IF
       
-        CLOSE(2)
-        OPEN(92,FILE=FNAME_RESULT,STATUS='REPLACE',ACTION='WRITE')
+        ITT_START=1
+        IF(ITT1.GT.1) ITT_START=2
+        DO I=1,NX
+        DO ITT=ITT_START,IAT
+           WRITE(2,2100) T+DT*TTC(ITT),XX(I),YY(I),ZZ(I),U(ITT,I),V(ITT,I),W(ITT,I),P(ITT,I),Re
+        END DO
+        END DO
+        FLUSH(2)
+        WRITE(*,*)'TIME_STEP_RESULT_APPENDED=',ITT1,T+DT,TRIM(FNAME_RESULT)
+        FNAME_CHECKPOINT=TRIM(FNAME_RESULT)//'.checkpoint'
+        OPEN(92,FILE=FNAME_CHECKPOINT,STATUS='REPLACE',ACTION='WRITE')
         DO I=1,NX
         DO ITT=1,IAT
-           WRITE(92,2100) T+DT*TTC(ITT),XX(I),YY(I),ZZ(I),U(ITT,I),V(ITT,I),W(ITT,I),P(ITT,I),Re
+          WRITE(92,2100) T+DT*TTC(ITT),XX(I),YY(I),ZZ(I),U(ITT,I),V(ITT,I),W(ITT,I),P(ITT,I),Re
         END DO
         END DO
         FLUSH(92)
         CLOSE(92)
-        WRITE(*,*)'FINAL_RESULT_WRITTEN=',TRIM(FNAME_RESULT)
+        WRITE(*,*)'TIME_STEP_CHECKPOINT_WRITTEN=',ITT1,TRIM(FNAME_CHECKPOINT)
         
-        T=T+DT
+        T=DBLE(ITT1)*DT
       
       
       END DO
+
+      CALL release_marquardt_pardiso_cache()
+      CLOSE(2)
+      WRITE(*,*)'FINAL_RESULT_WRITTEN=',TRIM(FNAME_RESULT)
         
       WRITE(*,*)'SUCSESSFUL GOOD LUCK !'
       
       
 
         
- 2100   FORMAT(8D25.16)
-!           do i=1,nx*iat*4
-!                     if(ssmmk(i,i)==0.0e0) then
-!                 write(*,*) i,i/(nx),ssmmk(i,i)
-!                   end if
-!           end do
+ 2100   FORMAT(9D25.16)
+
            
-!     Unit 2 is closed before the final result is rewritten with unit 92.
+!     Unit 2 now contains the complete time history and is closed above.
 
 ! FLOW CHECK ------------------------
       DO J=1,NAZ
@@ -5977,7 +5678,7 @@
       FLOW3=0.0D0
       DO I1=1,IAN
          IF(I1.GT.8+4*(NAX+NAY+NAZ)+2*NAX*NAY+NAX*NAZ.AND.I1.LE.8+4*(NAX+NAY+NAZ)+2*NAX*NAY+NAX*NAZ+NAY*NAZ) THEN
-         II=IE(IAT,IM)
+          II=IE(I1,IM)
          V1=U(IAT,II)
          FLOW3=FLOW3+V1*WW(I1-8-4*(NAX+NAY+NAZ)-2*NAX*NAY-NAX*NAZ)
          END IF
@@ -5985,7 +5686,7 @@
       FLOW3=FLOW3*D0*H0
       WRITE(*,*) FLOW3
 ! SECTION 4 (Outlet)
-      IM=5
+      IM=MX
       FLOW4=0.0D0
       DO I1=1,IAN
          IF(I1.GT.8+4*(NAX+NAY+NAZ)+2*NAX*NAY+NAX*NAZ.AND.I1.LE.8+4*(NAX+NAY+NAZ)+2*NAX*NAY+NAX*NAZ+NAY*NAZ) THEN
@@ -6020,6 +5721,183 @@
 
 ! *****************************************************************
 !
+!     Status: 0 converged, 1 iteration limit, 2 curvature breakdown,
+!             3 nonfinite arithmetic, 4 invalid preconditioner, 5 invalid input.
+      SUBROUTINE OZ_MARQUARDT_PCG(N,IR,IC,A,RHS,DIAG_ATA,D,LAMBDA,USE_PCG,MAXITER,TOL, &
+           X,R,Z,P,AP,TMP,WORK6,WORKT,ITERS,STATUS,REC_REL,TRUE_REL)
+      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
+      IMPLICIT NONE
+      INTEGER N,IR(N+1),IC(*),USE_PCG,MAXITER,ITERS,STATUS,I,K,ITER
+      REAL(8) A(*),RHS(N),DIAG_ATA(N),D(N),LAMBDA,TOL
+      REAL(8) X(N),R(N),Z(N),P(N),AP(N),TMP(N),WORK6(6,N),WORKT(6,N,8)
+      REAL(8) REC_REL,TRUE_REL,RHSN,NORM2,RHO,RHO_NEW,PAP,ALPHA,BETA,DENOM
+      REAL(8),EXTERNAL :: OZ_DDOT
+      LOGICAL OK
+      X=0.0D0
+      R=RHS
+      Z=0.0D0
+      P=0.0D0
+      ITERS=0
+      STATUS=5
+      REC_REL=HUGE(1.0D0)
+      TRUE_REL=HUGE(1.0D0)
+      IF(MAXITER.LT.0.OR.TOL.LE.0.0D0.OR.LAMBDA.LT.0.0D0) RETURN
+      IF(.NOT.IEEE_IS_FINITE(TOL).OR..NOT.IEEE_IS_FINITE(LAMBDA)) RETURN
+      STATUS=3
+      IF(.NOT.ALL(IEEE_IS_FINITE(RHS))) RETURN
+      NORM2=OZ_DDOT(N,RHS,1,RHS,1)
+      IF(.NOT.IEEE_IS_FINITE(NORM2).OR.NORM2.LT.0.0D0) RETURN
+      RHSN=SQRT(NORM2)
+      REC_REL=0.0D0
+      TRUE_REL=0.0D0
+      STATUS=0
+      IF(RHSN.EQ.0.0D0) RETURN
+      REC_REL=1.0D0
+      TRUE_REL=1.0D0
+      CALL PRECONDITION(OK)
+      IF(.NOT.OK) THEN
+        STATUS=4
+        RETURN
+      END IF
+      P=Z
+      RHO=OZ_DDOT(N,R,1,Z,1)
+      STATUS=1
+      DO ITER=1,MAXITER
+        ITERS=ITER
+        IF(.NOT.IEEE_IS_FINITE(RHO).OR.RHO.LE.0.0D0) THEN
+          STATUS=2
+          EXIT
+        END IF
+        CALL APPLY_NORMAL(P,AP)
+        PAP=OZ_DDOT(N,P,1,AP,1)
+        IF(.NOT.IEEE_IS_FINITE(PAP)) THEN
+          STATUS=3
+          EXIT
+        END IF
+        IF(PAP.LE.0.0D0) THEN
+          STATUS=2
+          EXIT
+        END IF
+        ALPHA=RHO/PAP
+        IF(.NOT.IEEE_IS_FINITE(ALPHA)) THEN
+          STATUS=3
+          EXIT
+        END IF
+        !$OMP PARALLEL DO PRIVATE(I) IF(N.GT.1000)
+        DO I=1,N
+          X(I)=X(I)+ALPHA*P(I)
+          R(I)=R(I)-ALPHA*AP(I)
+        END DO
+        !$OMP END PARALLEL DO
+        IF(.NOT.ALL(IEEE_IS_FINITE(X)).OR..NOT.ALL(IEEE_IS_FINITE(R))) THEN
+          STATUS=3
+          EXIT
+        END IF
+        NORM2=OZ_DDOT(N,R,1,R,1)
+        IF(.NOT.IEEE_IS_FINITE(NORM2).OR.NORM2.LT.0.0D0) THEN
+          STATUS=3
+          EXIT
+        END IF
+        REC_REL=SQRT(NORM2)/RHSN
+        IF(REC_REL.LE.TOL) THEN
+!         Verify the actual equation, not only the CG residual recurrence.
+          CALL TRUE_RESIDUAL()
+          IF(STATUS.EQ.3) RETURN
+          IF(TRUE_REL.LE.TOL) THEN
+            STATUS=0
+            RETURN
+          END IF
+!         Restart with the recomputed residual within the same iteration budget.
+          CALL PRECONDITION(OK)
+          IF(.NOT.OK) THEN
+            STATUS=4
+            RETURN
+          END IF
+          P=Z
+          RHO=OZ_DDOT(N,R,1,Z,1)
+          CYCLE
+        END IF
+        CALL PRECONDITION(OK)
+        IF(.NOT.OK) THEN
+          STATUS=4
+          EXIT
+        END IF
+        RHO_NEW=OZ_DDOT(N,R,1,Z,1)
+        BETA=RHO_NEW/RHO
+        IF(.NOT.IEEE_IS_FINITE(BETA)) THEN
+          STATUS=3
+          EXIT
+        END IF
+        !$OMP PARALLEL DO PRIVATE(I) IF(N.GT.1000)
+        DO I=1,N
+          P(I)=Z(I)+BETA*P(I)
+        END DO
+        !$OMP END PARALLEL DO
+        RHO=RHO_NEW
+      END DO
+      CALL TRUE_RESIDUAL()
+      IF(STATUS.NE.3.AND.TRUE_REL.LE.TOL) STATUS=0
+      RETURN
+      CONTAINS
+        SUBROUTINE APPLY_NORMAL(VEC,RESULT)
+          REAL(8) VEC(N),RESULT(N)
+          CALL OZ_CSR_MV(N,IR,IC,A,VEC,TMP)
+          CALL OZ_CSR_TMV_OMP(N,IR,IC,A,TMP,RESULT,WORKT)
+          !$OMP PARALLEL DO PRIVATE(I,K) IF(N.GT.1000)
+          DO I=1,N
+            WORK6(:,I)=0.0D0
+            CALL OZ_ADD_SLICE6(WORK6(1,I),RESULT(I))
+            CALL OZ_ADD_PRODUCT_SLICE6(WORK6(1,I),LAMBDA*D(I),VEC(I))
+            RESULT(I)=0.0D0
+            DO K=6,1,-1
+              RESULT(I)=RESULT(I)+WORK6(K,I)
+            END DO
+          END DO
+          !$OMP END PARALLEL DO
+        END SUBROUTINE
+        SUBROUTINE TRUE_RESIDUAL()
+          CALL APPLY_NORMAL(X,AP)
+          R=RHS-AP
+          IF(.NOT.ALL(IEEE_IS_FINITE(R))) THEN
+            STATUS=3
+            TRUE_REL=HUGE(1.0D0)
+            RETURN
+          END IF
+          NORM2=OZ_DDOT(N,R,1,R,1)
+          IF(.NOT.IEEE_IS_FINITE(NORM2).OR.NORM2.LT.0.0D0) THEN
+            STATUS=3
+            TRUE_REL=HUGE(1.0D0)
+            RETURN
+          END IF
+          TRUE_REL=SQRT(NORM2)/RHSN
+        END SUBROUTINE
+        SUBROUTINE PRECONDITION(VALID)
+          LOGICAL VALID
+          VALID=.TRUE.
+          DO I=1,N
+            IF(USE_PCG.NE.0) THEN
+              DENOM=DIAG_ATA(I)+LAMBDA*D(I)
+              IF(.NOT.IEEE_IS_FINITE(DENOM).OR.DENOM.LT.0.0D0) THEN
+                VALID=.FALSE.
+                RETURN
+              END IF
+              IF(DENOM.EQ.0.0D0) THEN
+                IF(R(I).NE.0.0D0) THEN
+                  VALID=.FALSE.
+                  RETURN
+                END IF
+                Z(I)=0.0D0
+              ELSE
+                Z(I)=R(I)/DENOM
+              END IF
+            ELSE
+              Z(I)=R(I)
+            END IF
+          END DO
+          VALID=ALL(IEEE_IS_FINITE(Z))
+        END SUBROUTINE
+      END SUBROUTINE OZ_MARQUARDT_PCG
+
       SUBROUTINE OZ_ADD_SLICE6(DSLICES,DVALUE)
       IMPLICIT REAL*8(A-H,O-Z)
       PARAMETER (IOZ_SLICE_MAX=6)
@@ -6123,7 +6001,7 @@
       use omp_lib
       IMPLICIT REAL*8(A-H,O-Z)
       PARAMETER (IOZ_SLICE_MAX=6)
-      PARAMETER (KOZ_WORK_THREADS=8)
+      PARAMETER (KOZ_WORK_THREADS=12)
       INTEGER N,IR(N+1),IC(*)
       REAL(8) A(*),X(*),Y(*),WORKT(IOZ_SLICE_MAX,N,KOZ_WORK_THREADS),DSUM(IOZ_SLICE_MAX)
       !$OMP PARALLEL DO PRIVATE(I,K,IT) NUM_THREADS(KOZ_WORK_THREADS) IF(N.GT.1000)
@@ -6175,7 +6053,7 @@
       REAL(8) X(*),Y(*)
       PARAMETER (DSPLIT=134217729.0D0)
       PARAMETER (IOZ_SLICE_MAX=6)
-      PARAMETER (KOZ_WORK_THREADS=8)
+      PARAMETER (KOZ_WORK_THREADS=12)
       REAL(8) DSLICES(IOZ_SLICE_MAX),DLOCAL(IOZ_SLICE_MAX),DTHREAD(IOZ_SLICE_MAX,KOZ_WORK_THREADS)
       OZ_DDOT=0.0D0
       DO K=1,IOZ_SLICE_MAX

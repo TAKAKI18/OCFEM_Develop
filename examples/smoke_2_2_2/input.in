@@ -1,0 +1,12 @@
+smoke_COMV3d_2_2_2.dat
+COMV1t_2.dat
+smoke_weight_2D_2_2.dat
+smoke_colo_ele_S_Duct_pipe_2_2_2_3D_LMN.dat
+smoke_boucone_S_Duct_pipe_2_2_2_3D_LMN.dat
+smoke_bound_S_Duct_pipe_2_2_2_3D_LMN.dat
+1.004D-6,1000.0
+0.04,0.0125,0.0125,0.025,0.025
+0.01,0.01,20
+results/solution.dat
+smoke_out_result_S_Duct_pipe_Unsteady_NS_2_2_2_3D_Re500_1step.dat
+results/flow.dat

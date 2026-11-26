@@ -1,0 +1,11 @@
+/build/
+__pycache__/
+*.pyc
+*.obj
+*.mod
+*.smod
+*.exe
+*.pdb
+*.ilk
+/examples/**/results/*
+!/examples/**/results/.gitkeep

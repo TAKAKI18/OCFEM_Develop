@@ -1,0 +1,207 @@
+{
+  "schema_version": 1,
+  "snapshot_date": "2026-11-26",
+  "original_filenames_preserved": true,
+  "original_bytes_preserved": true,
+  "numerical_statement_changes": false,
+  "files": [
+    {
+      "path": "src/solvers/UnSteady_Navire_Stokes_Straight_Duct_OCFEM_Marquardt_PARDISO_Extrap_Newton_lmn_nCSR.f90",
+      "role": "3D unsteady Navier-Stokes; Marquardt-PARDISO correction",
+      "sha256": "9038d1f615682f8a5f0dc538538a15585c5965c58fd1861f4677efb9217cc623",
+      "original_name": "UnSteady_Navire_Stokes_Straight_Duct_OCFEM_Marquardt_PARDISO_Extrap_Newton_lmn_nCSR.f90",
+      "original_sha256": "9038d1f615682f8a5f0dc538538a15585c5965c58fd1861f4677efb9217cc623",
+      "original_encoding": "utf-8-sig",
+      "statement_sha256": "186f52bbd4b526bc7ed72537dc91b471d2d2a3aa95e432219350f44ee8b99cfa",
+      "required_content": [
+        "use marquardt_pardiso_solver",
+        "TIME_DERIVATIVE_DOES_NOT_ANNIHILATE_CONSTANT_FIELD"
+      ]
+    },
+    {
+      "path": "src/initial/Steady_Stokes_Straight_Duct_OCFEM_takaki_intel_LU_3D_MM_Bound2_CSR_lmn.f90",
+      "role": "Linear steady Stokes; initial-field generator",
+      "sha256": "a3f9e6a1e5ba22add925dac23db678fcba3d7d656ced7b11fed37c0014ac14e5",
+      "original_name": "Steady_Stokes_Straight_Duct_OCFEM_takaki_intel_LU_3D_MM_Bound2_CSR_lmn.f90",
+      "original_sha256": "a3f9e6a1e5ba22add925dac23db678fcba3d7d656ced7b11fed37c0014ac14e5",
+      "original_encoding": "utf-8-sig",
+      "statement_sha256": "35e3bb296d99ca0bf79fc50e23444cf24291bb0703aa55d82d2dccb6b4653318",
+      "required_content": [
+        "call pardiso",
+        "Re=U0*D0/ANYU"
+      ]
+    },
+    {
+      "path": "src/common/sparse_triplet_builder.f90",
+      "role": "COO/CSR sparse matrix assembly and compensated products",
+      "sha256": "6f10ebb0222e5cf0046e37a6e5951d8aac5eebcb1b2f1a9bba1a141b8c4bd433",
+      "original_name": "sparse_triplet_builder.f90",
+      "original_sha256": "6f10ebb0222e5cf0046e37a6e5951d8aac5eebcb1b2f1a9bba1a141b8c4bd433",
+      "original_encoding": "utf-8-sig",
+      "statement_sha256": "32dd60ff8ea72bd5f4916ca7ce5dfdc4c1408f853745fa61ef4c6c142ac1ebf6",
+      "required_content": [
+        "module sparse_triplet_builder",
+        "csr_matmul_ozaki_diag_upper"
+      ]
+    },
+    {
+      "path": "src/common/marquardt_pardiso_solver.f90",
+      "role": "PARDISO correction solvers; normal and augmented systems",
+      "sha256": "4eed321633b3723960c18b2c4f65bf63d102fdde1103889db4e7ee76a852aec3",
+      "original_name": "marquardt_pardiso_solver.f90",
+      "original_sha256": "4eed321633b3723960c18b2c4f65bf63d102fdde1103889db4e7ee76a852aec3",
+      "original_encoding": "utf-8-sig",
+      "statement_sha256": "e26b68a02f0cc62616ae49d0a91ec5ff23418ecc1b8050ccba3d3765e11815bc",
+      "required_content": [
+        "module marquardt_pardiso_solver",
+        "solve_marquardt_pardiso_augmented_cached"
+      ]
+    },
+    {
+      "path": "src/preprocess/calcollQ_TAKAKI_newton_q_xy.f90",
+      "role": "1D/2D Jacobi-root collocation point generator",
+      "sha256": "332464067e921f906399b5347966eb7c86aef01942bcb1c07b80dbc2db8f2180",
+      "original_name": "calcollQ_TAKAKI_newton_q_xy.f90",
+      "original_sha256": "332464067e921f906399b5347966eb7c86aef01942bcb1c07b80dbc2db8f2180",
+      "original_encoding": "utf-8-sig",
+      "statement_sha256": "e8ed0a7da884eb68342c73cd4693b2f0c5eeab5c98139863e5203e4b87524cdc",
+      "required_content": [
+        "read(*,*) nax,nay",
+        "call collo_newton"
+      ]
+    },
+    {
+      "path": "src/preprocess/calcollQ_TAKAKI_newton_q_xyz.f90",
+      "role": "3D Jacobi-root collocation point generator",
+      "sha256": "eadf9833621f382123017a623cf3cbbf37739ef3d73a5d53363994a880ccaae7",
+      "original_name": "calcollQ_TAKAKI_newton_q_xyz.f90",
+      "original_sha256": "eadf9833621f382123017a623cf3cbbf37739ef3d73a5d53363994a880ccaae7",
+      "original_encoding": "utf-8-sig",
+      "statement_sha256": "0837f51b4eb2aa6c298185d85cbfea030fb6258d7df78a56e989c21f101c5b6b",
+      "required_content": [
+        "read(*,*) nax,nay,naz",
+        "(3i5)"
+      ]
+    },
+    {
+      "path": "src/preprocess/COMV1T_TAKAKI_q.f90",
+      "role": "1D differential operators, used for time collocation",
+      "sha256": "38a1d368e7fb93cf1736b803fa69b8dec9ad1a69a5362fed0b2a01316e397ca8",
+      "original_name": "COMV1T_TAKAKI_q.f90",
+      "original_sha256": "38a1d368e7fb93cf1736b803fa69b8dec9ad1a69a5362fed0b2a01316e397ca8",
+      "original_encoding": "utf-8-sig",
+      "statement_sha256": "e0d43b383d1216c87ddda8acad89e1dd33edf6150bebad68652a41e48248ca8d",
+      "required_content": [
+        "module collo_mod",
+        "call collocation(m,a)"
+      ]
+    },
+    {
+      "path": "src/preprocess/COMV3d_TAKAKI_q_Mxyz.f90",
+      "role": "3D tensor-product differential operators",
+      "sha256": "4c8cebe860d362f2eff87cf6387e8e3484f2f38e3b82e210502a835e4e604967",
+      "original_name": "COMV3d_TAKAKI_q_Mxyz.f90",
+      "original_sha256": "4c8cebe860d362f2eff87cf6387e8e3484f2f38e3b82e210502a835e4e604967",
+      "original_encoding": "utf-8-sig",
+      "statement_sha256": "68e81a62a23290fec5d9f159fc4b49e265d63adc902c545f35adacd28c958db1",
+      "required_content": [
+        "module collo_matrix_mod",
+        "NNAX,NNAY,NNAZ"
+      ]
+    },
+    {
+      "path": "src/preprocess/calweight_TAKAKI_2D_q.f90",
+      "role": "2D section-integration weights",
+      "sha256": "d3b4787464ab65c1b1f5ba4d9cb04bf4af8209c85898379337abca0d92528cf2",
+      "original_name": "calweight_TAKAKI_2D_q.f90",
+      "original_sha256": "d3b4787464ab65c1b1f5ba4d9cb04bf4af8209c85898379337abca0d92528cf2",
+      "original_encoding": "utf-8-sig",
+      "statement_sha256": "da7809af0fe4a2b8701b4c57e58abc6dd3b746430410c8b2e1802adcbc491a0c",
+      "required_content": [
+        "read(*,*) na1,na2",
+        "program main"
+      ]
+    },
+    {
+      "path": "src/preprocess/Straight_Duct_gene_TAKAKI_3D_LMN.f90",
+      "role": "3D five-element duct geometry, interface normals and boundary values",
+      "sha256": "8d8ac427efec14a334d60f8a327d3130e891364050301df10712163cfda132ad",
+      "original_name": "Straight_Duct_gene_TAKAKI_3D_LMN.f90",
+      "original_sha256": "8d8ac427efec14a334d60f8a327d3130e891364050301df10712163cfda132ad",
+      "original_encoding": "utf-8-sig",
+      "statement_sha256": "210274838a7a8ea81be32791d7a4c4690c74beab7aae5dba247e1613e465bd30",
+      "required_content": [
+        "X1,Z1,Y1,D0,H0,U00,ROU",
+        "KNX=50000"
+      ]
+    },
+    {
+      "path": "tests/test_sparse_triplet_builder.f90",
+      "role": "Small regression test for sparse_triplet_builder",
+      "sha256": "ad503b02d8e9f39e41694ca1fde78bae63be98b9d24191410a6453123371cd1e",
+      "original_name": "test_sparse_triplet_builder.f90",
+      "original_sha256": "ad503b02d8e9f39e41694ca1fde78bae63be98b9d24191410a6453123371cd1e",
+      "original_encoding": "utf-8-sig",
+      "statement_sha256": "bca6499dbafc758c8f27a7c3be0eb63fa93ecf6ef1ae08c1ece926879c67d055",
+      "required_content": [
+        "program test_sparse_triplet_builder"
+      ]
+    },
+    {
+      "path": "tests/test_marquardt_pardiso.f90",
+      "role": "Small regression test for marquardt_pardiso",
+      "sha256": "cf240c1f87d599368035bee79226357348f4b4bc31d672d263876385795799c0",
+      "original_name": "test_marquardt_pardiso.f90",
+      "original_sha256": "cf240c1f87d599368035bee79226357348f4b4bc31d672d263876385795799c0",
+      "original_encoding": "utf-8-sig",
+      "statement_sha256": "816a6d09f32776a9e9d7ed42c983e306a2f404c46a72a4e7e5a8719777ff4d43",
+      "required_content": [
+        "program test_marquardt_pardiso"
+      ]
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "examples/smoke_2_2_2/smoke_COMV3d_2_2_2.dat",
+      "sha256": "b885d78c8db0749471d6d0f61dd648a23ad0a0a964dbbfe4efcc0b645f777e57",
+      "original_name": "smoke_COMV3d_2_2_2.dat",
+      "original_sha256": "b885d78c8db0749471d6d0f61dd648a23ad0a0a964dbbfe4efcc0b645f777e57"
+    },
+    {
+      "path": "examples/smoke_2_2_2/COMV1t_2.dat",
+      "sha256": "e7dbb6ca1c4e5761b5906f0551d48b27a264b7d9ab90390725bc35ff66d6a521",
+      "original_name": "COMV1t_2.dat",
+      "original_sha256": "e7dbb6ca1c4e5761b5906f0551d48b27a264b7d9ab90390725bc35ff66d6a521"
+    },
+    {
+      "path": "examples/smoke_2_2_2/smoke_weight_2D_2_2.dat",
+      "sha256": "6b23c932195ddad5ff292359930b9556ce883ed792b310be6de7b8778da95aa2",
+      "original_name": "smoke_weight_2D_2_2.dat",
+      "original_sha256": "6b23c932195ddad5ff292359930b9556ce883ed792b310be6de7b8778da95aa2"
+    },
+    {
+      "path": "examples/smoke_2_2_2/smoke_colo_ele_S_Duct_pipe_2_2_2_3D_LMN.dat",
+      "sha256": "302d0adcaa6bc29ca3503b7505ade01045189a74f57242c30aa02d5a5f777630",
+      "original_name": "smoke_colo_ele_S_Duct_pipe_2_2_2_3D_LMN.dat",
+      "original_sha256": "302d0adcaa6bc29ca3503b7505ade01045189a74f57242c30aa02d5a5f777630"
+    },
+    {
+      "path": "examples/smoke_2_2_2/smoke_boucone_S_Duct_pipe_2_2_2_3D_LMN.dat",
+      "sha256": "f93ef79350733e2254c5986aca8752a19b354e8e68c8e2c1aa77cbd26d7ba956",
+      "original_name": "smoke_boucone_S_Duct_pipe_2_2_2_3D_LMN.dat",
+      "original_sha256": "f93ef79350733e2254c5986aca8752a19b354e8e68c8e2c1aa77cbd26d7ba956"
+    },
+    {
+      "path": "examples/smoke_2_2_2/smoke_bound_S_Duct_pipe_2_2_2_3D_LMN.dat",
+      "sha256": "b8a901849e6dafb6af014cc34af87275a799c10a4a7e6668038b0fd11fe2861d",
+      "original_name": "smoke_bound_S_Duct_pipe_2_2_2_3D_LMN.dat",
+      "original_sha256": "b8a901849e6dafb6af014cc34af87275a799c10a4a7e6668038b0fd11fe2861d"
+    },
+    {
+      "path": "examples/smoke_2_2_2/smoke_out_result_S_Duct_pipe_Unsteady_NS_2_2_2_3D_Re500_1step.dat",
+      "sha256": "cb8143306421b1a2f50c04eec544b9dc310c2476ec6fb55a15e14c18d6972958",
+      "original_name": "smoke_out_result_S_Duct_pipe_Unsteady_NS_2_2_2_3D_Re500_1step.dat",
+      "original_sha256": "cb8143306421b1a2f50c04eec544b9dc310c2476ec6fb55a15e14c18d6972958"
+    }
+  ]
+}

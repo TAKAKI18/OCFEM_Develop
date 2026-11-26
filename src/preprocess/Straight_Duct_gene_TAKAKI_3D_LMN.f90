@@ -512,16 +512,14 @@
        NSBUI(IP1)=II
        JSBUI(IP1)=J1
        ISBUI(IP1)=I1
-       ETA_Y=(YY(II)-Y1)/D0
-       ETA_Z=(ZZ(II)-Z1)/H0
-       ETA_Y=MAX(0.0D0,MIN(1.0D0,ETA_Y))
-       ETA_Z=MAX(0.0D0,MIN(1.0D0,ETA_Z))
-       SBUI(IP1)=U00*16.0D0*ETA_Y*(1.0D0-ETA_Y)*ETA_Z*(1.0D0-ETA_Z)
+!      Tensor-product parabolic inflow, with U00 as the centerline maximum.
+       SBUI(IP1)=16.0D0*U00*GY(I1)*(1.0D0-GY(I1))*GZ(I1)*(1.0D0-GZ(I1))
        SBVI(IP1)=0.0D0
        SBWI(IP1)=0.0D0
      END DO
      NSB2=IP1
      
+!    Atmospheric discharge: zero gauge pressure on the entire outlet.
      J1=5
      IP2=0       
      DO I1=9+4*(NAX+NAY+NAZ)+2*NAX*NAY+NAX*NAZ,8+4*(NAX+NAY+NAZ)+2*NAX*NAY+NAX*NAZ+NAY*NAZ
@@ -530,7 +528,7 @@
        NSBUO(IP2)=II
        JSBUO(IP2)=J1
        ISBUO(IP2)=I1
-       SBPO(IP2)=1.0D0
+       SBPO(IP2)=0.0D0
      END DO
      DO I1=9+4*(NAX+NAY)+NAZ,8+4*(NAX+NAY)+3*NAZ
        II=IE(I1,J1)
@@ -538,7 +536,7 @@
        NSBUO(IP2)=II
        JSBUO(IP2)=J1
        ISBUO(IP2)=I1
-       SBPO(IP2)=1.0D0
+       SBPO(IP2)=0.0D0
      END DO
      DO I1=9+NAX,8+NAX+NAY
        II=IE(I1,J1)
@@ -546,7 +544,7 @@
        NSBUO(IP2)=II
        JSBUO(IP2)=J1
        ISBUO(IP2)=I1
-       SBPO(IP2)=1.0D0
+       SBPO(IP2)=0.0D0
      END DO
      DO I1=9+2*(NAX+NAY)+NAX,8+2*(NAX+NAY)+NAX+NAY
        II=IE(I1,J1)
@@ -554,7 +552,7 @@
        NSBUO(IP2)=II
        JSBUO(IP2)=J1
        ISBUO(IP2)=I1
-       SBPO(IP2)=1.0D0
+       SBPO(IP2)=0.0D0
      END DO
      I1=2
        II=IE(I1,J1)
@@ -562,28 +560,28 @@
        NSBUO(IP2)=II
        JSBUO(IP2)=J1
        ISBUO(IP2)=I1
-       SBPO(IP2)=1.0D0
+       SBPO(IP2)=0.0D0
      I1=3
        II=IE(I1,J1)
        IP2=IP2+1
        NSBUO(IP2)=II
        JSBUO(IP2)=J1
        ISBUO(IP2)=I1
-       SBPO(IP2)=1.0D0
+       SBPO(IP2)=0.0D0
      I1=6
        II=IE(I1,J1)
        IP2=IP2+1
        NSBUO(IP2)=II
        JSBUO(IP2)=J1
        ISBUO(IP2)=I1
-       SBPO(IP2)=1.0D0
+       SBPO(IP2)=0.0D0
      I1=7
        II=IE(I1,J1)
        IP2=IP2+1
        NSBUO(IP2)=II
        JSBUO(IP2)=J1
        ISBUO(IP2)=I1
-       SBPO(IP2)=1.0D0    
+       SBPO(IP2)=0.0D0    
      NSB3=IP2
      
      RETURN

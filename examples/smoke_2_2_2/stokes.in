@@ -1,0 +1,8 @@
+smoke_COMV3d_2_2_2.dat
+smoke_weight_2D_2_2.dat
+smoke_colo_ele_S_Duct_pipe_2_2_2_3D_LMN.dat
+smoke_boucone_S_Duct_pipe_2_2_2_3D_LMN.dat
+smoke_bound_S_Duct_pipe_2_2_2_3D_LMN.dat
+1.004D-6,1000.0
+0.04,0.0125,0.0125
+results/stokes_initial.dat

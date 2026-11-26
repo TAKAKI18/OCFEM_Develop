@@ -1,0 +1,186 @@
+{
+  "date": "2026-11-26",
+  "original_bytes_preserved": true,
+  "original_filenames_preserved": true,
+  "release_runtime_build": [
+    {
+      "target": "unsteady_ns_marquardt_pardiso",
+      "exit_code": 0,
+      "executable": "build/release/bin/unsteady_ns_marquardt_pardiso.exe",
+      "log": "build/release/unsteady_ns_marquardt_pardiso_build.log"
+    },
+    {
+      "target": "calcollQ_TAKAKI_newton_q_xy",
+      "exit_code": 0,
+      "executable": "build/release/bin/calcollQ_TAKAKI_newton_q_xy.exe",
+      "log": "build/release/calcollQ_TAKAKI_newton_q_xy_build.log"
+    },
+    {
+      "target": "calcollQ_TAKAKI_newton_q_xyz",
+      "exit_code": 0,
+      "executable": "build/release/bin/calcollQ_TAKAKI_newton_q_xyz.exe",
+      "log": "build/release/calcollQ_TAKAKI_newton_q_xyz_build.log"
+    },
+    {
+      "target": "calweight_TAKAKI_2D_q",
+      "exit_code": 0,
+      "executable": "build/release/bin/calweight_TAKAKI_2D_q.exe",
+      "log": "build/release/calweight_TAKAKI_2D_q_build.log"
+    },
+    {
+      "target": "COMV1T_TAKAKI_q",
+      "exit_code": 0,
+      "executable": "build/release/bin/COMV1T_TAKAKI_q.exe",
+      "log": "build/release/COMV1T_TAKAKI_q_build.log"
+    },
+    {
+      "target": "COMV3d_TAKAKI_q_Mxyz",
+      "exit_code": 0,
+      "executable": "build/release/bin/COMV3d_TAKAKI_q_Mxyz.exe",
+      "log": "build/release/COMV3d_TAKAKI_q_Mxyz_build.log"
+    },
+    {
+      "target": "Straight_Duct_gene_TAKAKI_3D_LMN",
+      "exit_code": 0,
+      "executable": "build/release/bin/Straight_Duct_gene_TAKAKI_3D_LMN.exe",
+      "log": "build/release/Straight_Duct_gene_TAKAKI_3D_LMN_build.log"
+    }
+  ],
+  "smoke_build": [
+    {
+      "target": "unsteady_ns_marquardt_pardiso",
+      "exit_code": 0,
+      "executable": "build/smoke/bin/unsteady_ns_marquardt_pardiso.exe",
+      "log": "build/smoke/unsteady_ns_marquardt_pardiso_build.log"
+    },
+    {
+      "target": "stokes_initial",
+      "exit_code": 0,
+      "executable": "build/smoke/bin/stokes_initial.exe",
+      "log": "build/smoke/stokes_initial_build.log"
+    },
+    {
+      "target": "calcollQ_TAKAKI_newton_q_xy",
+      "exit_code": 0,
+      "executable": "build/smoke/bin/calcollQ_TAKAKI_newton_q_xy.exe",
+      "log": "build/smoke/calcollQ_TAKAKI_newton_q_xy_build.log"
+    },
+    {
+      "target": "calcollQ_TAKAKI_newton_q_xyz",
+      "exit_code": 0,
+      "executable": "build/smoke/bin/calcollQ_TAKAKI_newton_q_xyz.exe",
+      "log": "build/smoke/calcollQ_TAKAKI_newton_q_xyz_build.log"
+    },
+    {
+      "target": "calweight_TAKAKI_2D_q",
+      "exit_code": 0,
+      "executable": "build/smoke/bin/calweight_TAKAKI_2D_q.exe",
+      "log": "build/smoke/calweight_TAKAKI_2D_q_build.log"
+    },
+    {
+      "target": "COMV1T_TAKAKI_q",
+      "exit_code": 0,
+      "executable": "build/smoke/bin/COMV1T_TAKAKI_q.exe",
+      "log": "build/smoke/COMV1T_TAKAKI_q_build.log"
+    },
+    {
+      "target": "COMV3d_TAKAKI_q_Mxyz",
+      "exit_code": 0,
+      "executable": "build/smoke/bin/COMV3d_TAKAKI_q_Mxyz.exe",
+      "log": "build/smoke/COMV3d_TAKAKI_q_Mxyz_build.log"
+    },
+    {
+      "target": "Straight_Duct_gene_TAKAKI_3D_LMN",
+      "exit_code": 0,
+      "executable": "build/smoke/bin/Straight_Duct_gene_TAKAKI_3D_LMN.exe",
+      "log": "build/smoke/Straight_Duct_gene_TAKAKI_3D_LMN_build.log"
+    },
+    {
+      "target": "test_marquardt_pardiso",
+      "exit_code": 0,
+      "executable": "build/smoke/bin/test_marquardt_pardiso.exe",
+      "log": "build/smoke/test_marquardt_pardiso_build.log"
+    },
+    {
+      "target": "test_sparse_triplet_builder",
+      "exit_code": 0,
+      "executable": "build/smoke/bin/test_sparse_triplet_builder.exe",
+      "log": "build/smoke/test_sparse_triplet_builder_build.log"
+    }
+  ],
+  "runtime_checks": {
+    "passed": false,
+    "scope": "linear modules and preprocessing only; NS production not run",
+    "run_directory": "build/smoke/checks_c725805a",
+    "results": [
+      {
+        "name": "test_sparse_triplet_builder",
+        "exit_code": 408,
+        "elapsed_s": 0.3057776000350714
+      },
+      {
+        "name": "test_marquardt_pardiso",
+        "exit_code": 0,
+        "elapsed_s": 6.639202699996531
+      },
+      {
+        "name": "calcollQ_TAKAKI_newton_q_xy",
+        "exit_code": 0,
+        "elapsed_s": 0.5708848000504076
+      },
+      {
+        "name": "calcollQ_TAKAKI_newton_q_xyz",
+        "exit_code": 0,
+        "elapsed_s": 0.5932712000794709
+      },
+      {
+        "name": "COMV1T_TAKAKI_q",
+        "exit_code": 0,
+        "elapsed_s": 0.5759359998628497
+      },
+      {
+        "name": "COMV3d_TAKAKI_q_Mxyz",
+        "exit_code": 0,
+        "elapsed_s": 0.5755543999839574
+      },
+      {
+        "name": "calweight_TAKAKI_2D_q",
+        "exit_code": 0,
+        "elapsed_s": 0.5042952999938279
+      },
+      {
+        "name": "time_operator_polynomial_identities",
+        "constant": 5.551115123125783e-16,
+        "linear": 4.440892098500626e-16,
+        "quadratic": 4.6629367034256575e-15,
+        "passed": true
+      },
+      {
+        "name": "space_operators_annihilate_constant",
+        "nodes": 64,
+        "max_abs": 7.993605777301127e-15,
+        "passed": true
+      },
+      {
+        "name": "section_weights_integrate_constant",
+        "sums": [
+          1.0,
+          1.0
+        ],
+        "passed": true
+      }
+    ],
+    "failures": [
+      {
+        "name": "test_sparse_triplet_builder",
+        "error": "forrtl: severe (408): fort: (10): Subscript #1 of the array SORTED_COL has value 6 which is greater than the upper bound of 5\n\nImage              PC                Routine            Line        Source             \ntest_sparse_tripl  00007FF6DEB4B236  SPARSE_TRIPLET_BU         216  sparse_triplet_builder.f90\ntest_sparse_tripl  00007FF6DEB38423  TRIPLET_TO_CSR            205  sparse_triplet_builder.f90\ntest_sparse_tripl  00007FF6DEB5D4A4  TEST_SPARSE_TRIPL          17  test_sparse_triplet_builder.f90\ntest_sparse_tripl  00007FF6DEB7ACDB  Unknown               Unknown  Unknown\ntest_sparse_tripl  00007FF6DEBD30D4  Unknown               Unknown  Unknown\nKERNEL32.DLL       00007FF9A352DDA7  Unknown               Unknown  Unknown\nntdll.dll          00007FF9A4D79C5C  Unknown               Unknown  Unknown\n"
+      }
+    ]
+  },
+  "known_original_issues": [
+    "sparse_triplet_builder.f90:216 bounds failure under debug checks",
+    "Unmodified full-size Stokes COMMON exceeds Windows NTCOFF 2 GiB limit"
+  ],
+  "production_ns_run": false,
+  "linux_runtime_verified": false
+}
